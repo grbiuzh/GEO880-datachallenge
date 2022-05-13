@@ -20,8 +20,7 @@ Analysis Geo 880**
 <!-- What do you expect, anticipate? -->
 
 ## Data
-<!-- What data will you use? Will you require additional context data? Where do you get this data from? Do you already have all the data? -->
-We will use the data set on Roe Deer
+For this project we use the data set with the movement data of the deer which was provided. In addition, we will use data with vegetation information, either geodata from the canton of Zurich or the raster values from the Swiss "Arealstatistik". Which data will be used must first be compared with the literature on deer to know which vegetation has an influence on deer and how strong. 
 
 ## Analytical concepts
 <!-- Which analytical concepts will you use? What conceptual movement spaces and respective modelling approaches of trajectories will you be using? What additional spatial analysis methods will you be using? -->
