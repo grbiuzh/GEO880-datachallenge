@@ -10,11 +10,12 @@ Analysis Geo 880**
 | **Student 1:** | Tim Fässler              |
 | **Student 2:** | Gregory Biland                 |
 
-## Abstract 
-<!-- (50-60 words) -->
+## Abstract (50-60 words)
 
-## Research Questions
-<!-- (50-60 words) -->
+## Research Questions (50-60 words)
+- 
+
+
 
 ## Results / products
 <!-- What do you expect, anticipate? -->
