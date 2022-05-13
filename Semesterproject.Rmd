@@ -1,29 +1,44 @@
 ---
-title: The title of your Semesterproject
-subtitle: A subtle subtitle
-author: Firstname1 Lastname1 and Firstname2 Lastname2
-output: html_document
-
+title: "GEO880 - CMA: Semester Project"
+subtitle: "Movement in wild places"
+author: "Tim Fässler and Gregory Biland"
+date: "5/3/2022"
+output:
+  html_document
 ---
 
-
-<!-- You can add  your R Code with Code chunks-->
-
-```{r, echo = FALSE, warning=FALSE, message=FALSE}
-
-# You can set chunk options individually per code chunk, as was done with this
-# code chunk.
-
-# echo = FALSE           hides the code from the generated output
-# warning = FALSE        hides warnings from the generated output
-# message = FALSE        hides messages from the generated output
-
-# To set the setting for all code chunks, use the following code:
-
+```{r setup, include=FALSE}
+library(knitr)
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
-
 ```
 
+```{r,echo = FALSE, warning = FALSE, message = FALSE}
+Sys.setenv(LANG = "en")
+library(readr)        # to import tabular data (e.g. csv)
+library(dplyr)        # to manipulate (tabular) data
+library(ggplot2)      # to visualize data
+library(sf)           # to handle spatial vector data
+library(terra)        # To handle raster data
+library(lubridate)    # To handle dates and times
+library(grid)
+library(gridExtra)
+library(zoo)
+library(SimilarityMeasures)
+library(patchwork)
+
+knitr::opts_chunk$set(
+  message = F,
+  fig.width = 7,
+  fig.height = 6,
+  pandoc.stack.size = "4g",
+  fig.align = 'center',
+  opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+)
+
+dataFolder   <- here::here()   
+RFolder      <- here::here()         
+figureFolder <- here::here("figs") 
+```
 
 ## Abstract
 
@@ -56,10 +71,6 @@ ggplot(schreck_locations, aes(E, N)) +
   coord_map()
 
 ```
-
-
-
-
 
 ## Material and Methods
 
