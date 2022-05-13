@@ -1,11 +1,11 @@
-# Proposal for Semester Project
+# Proposal for Data Challenge
 
 **Patterns & Trends in Environmental Data / Computational Movement
 Analysis Geo 880**
 
 | Semester:      | FS22                              |
 |----------------|---------------------------------- |
-| **Data:**      | Roe Deer Movement Pattern           |
+| **Data:**      | Roe Deer Movement Data           |
 | **Title:**     | Prediction of future movement in Roe Deer        |
 | **Student 1:** | Tim Fässler              |
 | **Student 2:** | Gregory Biland                 |
@@ -21,6 +21,7 @@ Analysis Geo 880**
 
 ## Data
 <!-- What data will you use? Will you require additional context data? Where do you get this data from? Do you already have all the data? -->
+We will use the data set on Roe Deer
 
 ## Analytical concepts
 <!-- Which analytical concepts will you use? What conceptual movement spaces and respective modelling approaches of trajectories will you be using? What additional spatial analysis methods will you be using? -->
