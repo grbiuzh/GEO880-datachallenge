@@ -16,17 +16,14 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 Sys.setenv(LANG = "en")
 library(readr)        # to import tabular data (e.g. csv)
 library(dplyr)        # to manipulate (tabular) data
-library(ggplot2)      # to visualize data
 library(sf)           # to handle spatial vector data
 library(terra)        # To handle raster data
 library(lubridate)    # To handle dates and times
 library(grid)
 library(gridExtra)
-library(zoo)
-library(SimilarityMeasures)
-library(patchwork)
 library(ggplot2)
 library(randomNames)
+library(caTools)
 
 knitr::opts_chunk$set(
   message = F,
@@ -43,10 +40,7 @@ figureFolder <- here::here("figs")
 ```
 
 ```{r}
-deer <- read_delim(file.path(dataFolder, "all_deer_cleaned.csv"))
-sex <- read_delim(file.path(dataFolder, "sex.csv"))
-
-deer <- left_join(deer,sex, by = "reh")
+deer <- read_delim(file.path(dataFolder, "all_deer_complete.csv"))
 ```
 ## Abstract
 
@@ -59,8 +53,28 @@ head(deer)
 ```
 
 ## Material and Methods
-```{r}
 
+### Visualization
+
+```{r}
+deer <- deer %>% st_as_sf(coords = c("x", "y"), crs = 4326, remove = FALSE)
+
+ggplot()+
+  geom_point(data = deer, aes(x = x, y=y, col = reh), size = .2)+
+  ggtitle("Tracking points for 15 different roe deer")
+
+deer <- deer %>% st_drop_geometry()
+
+```
+```{r}
+set.seed(55)
+
+split = sample.split(deer, SplitRatio = 0.8)
+trainingset = subset(deer, split==TRUE)
+testset = subset(deer, split==FALSE)
+
+trainingset_clean <- select(trainingset, -c()) 
+testset_clean <- select(testset, -c())
 ```
 
 
