@@ -1,6 +1,6 @@
 ---
-title: "GEO880 - CMA: Semester Project"
-subtitle: "Movement in wild places"
+title: "Roe Deer Movement Data"
+subtitle: "Prediction of future movement in Roe Deer"
 author: "Tim Fässler and Gregory Biland"
 date: "5/3/2022"
 output:
@@ -48,71 +48,12 @@ dataset <- read_delim(file.path(dataFolder, "wildschwein_BE.csv"))
 
 ## Abstract
 
-<!-- the following is just a placeholder text, remove it!-->
-Society philosophy merciful selfish sexuality depths overcome madness. Morality free faithful merciful ubermensch good oneself convictions intentions eternal-return. Spirit against christianity right selfish evil ultimate pious hatred ocean dead insofar noble. Madness pious madness christianity prejudice horror grandeur god strong. Ideal will philosophy reason pious society burying ascetic right society philosophy. Society will evil intentions against philosophy against holiest victorious.
-
-
 ## Introduction
-
-<!-- the following is just a placeholder text, remove it!-->
-Against holiest pinnacle mountains merciful ideal society play disgust will ubermensch ultimate pinnacle victorious. Snare value law gains battle pious intentions revaluation strong. Insofar snare faith ideal oneself.
-
-```{r}
-# Include tables with the function "kable"
-
-knitr::kable(head(dataset))
-```
-
-<!-- the following is just a placeholder text, remove it!-->
-Revaluation evil aversion ultimate decrepit disgust decrepit eternal-return noble faithful pinnacle. Truth ascetic inexpedient decrepit free. Ubermensch free merciful mountains endless fearful decieve reason mountains will decrepit strong selfish depths. Overcome faith snare gains oneself transvaluation.
-
-```{r}
-# include plots automatically
-
-ggplot(dataset, aes(Lat, Long)) +
-  geom_point() +
-  coord_map()
-
-```
 
 ## Material and Methods
 
-<!-- the following is just a placeholder text, remove it!-->
-Christianity revaluation value battle faithful marvelous society derive free truth. Right battle mountains superiority grandeur ascetic grandeur merciful. Derive against intentions burying salvation ocean. Right intentions dead victorious ideal spirit evil ultimate joy. Holiest spirit value oneself contradict aversion christianity ultimate convictions war christian.
 
 ## Results
 
-<!-- the following is just a placeholder text, remove it!-->
-Philosophy oneself passion play fearful self noble zarathustra deceptions sexuality. Endless ocean of oneself dead ocean. Selfish decrepit.
 
 ## Discussion
-
-<!-- the following is just a placeholder text, remove it!-->
-Justice convictions spirit sexuality insofar free marvelous joy. Revaluation virtues mountains spirit fearful sexuality love endless. Society intentions will noble burying aversion moral. Insofar passion ultimate mountains of play gains depths joy christian reason christianity mountains dead. Mountains christianity play war holiest ascetic passion oneself derive grandeur. Against pinnacle hope joy burying ocean of horror disgust victorious faithful justice suicide.
-
-
-
-#### Proposal
-## Abstract 
-<!-- (50-60 words) -->
-
-## Research Questions
-<!-- (50-60 words) -->
-
-## Results / products
-<!-- What do you expect, anticipate? -->
-
-## Data
-<!-- What data will you use? Will you require additional context data? Where do you get this data from? Do you already have all the data? -->
-
-## Analytical concepts
-<!-- Which analytical concepts will you use? What conceptual movement spaces and respective modelling approaches of trajectories will you be using? What additional spatial analysis methods will you be using? -->
-
-## R concepts
-<!-- Which R concepts, functions, packages will you mainly use. What additional spatial analysis methods will you be using? -->
-
-## Risk analysis
-<!-- What could be the biggest challenges/problems you might face? What is your plan B? -->
-
-## Questions? 
-<!-- Which questions would you like to discuss at the coaching session? -->

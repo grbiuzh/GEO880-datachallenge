@@ -5,10 +5,10 @@ Analysis Geo 880**
 
 | Semester:      | FS22                              |
 |----------------|---------------------------------- |
-| **Data:**      | Wild Boar Movement Data           |
-| **Title:**     | The title of your project         |
-| **Student 1:** | Name of Student 1                 |
-| **Student 2:** | Name of Student 2                 |
+| **Data:**      | Roe Deer Movement Pattern           |
+| **Title:**     | Prediction of future movement in Roe Deer        |
+| **Student 1:** | Tim Fässler              |
+| **Student 2:** | Gregory Biland                 |
 
 ## Abstract 
 <!-- (50-60 words) -->
