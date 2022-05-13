@@ -26,6 +26,7 @@ library(zoo)
 library(SimilarityMeasures)
 library(patchwork)
 library(ggplot2)
+library(randomNames)
 
 knitr::opts_chunk$set(
   message = F,
@@ -41,16 +42,22 @@ RFolder      <- here::here()
 figureFolder <- here::here("figs") 
 ```
 ```{r}
-dataset <- read_delim(file.path(dataFolder, "wildschwein_BE.csv"))
+deer <- read_delim(file.path(dataFolder, "all_deer_cleaned.csv"))
 
 ```
-
-
 ## Abstract
 
 ## Introduction
 
+```{r}
+head(deer)
+```
+
+
 ## Material and Methods
+```{r}
+deer <- deer %>% group_by(reh) %>% mutate(Name = randomNames(reh, ethnicity = 4))
+```
 
 
 ## Results
