@@ -25,6 +25,7 @@ library(gridExtra)
 library(zoo)
 library(SimilarityMeasures)
 library(patchwork)
+library(ggplot2)
 
 knitr::opts_chunk$set(
   message = F,
@@ -39,6 +40,11 @@ dataFolder   <- here::here()
 RFolder      <- here::here()         
 figureFolder <- here::here("figs") 
 ```
+```{r}
+dataset <- read_delim(file.path(dataFolder, "wildschwein_BE.csv"))
+
+```
+
 
 ## Abstract
 
@@ -52,12 +58,9 @@ Society philosophy merciful selfish sexuality depths overcome madness. Morality 
 Against holiest pinnacle mountains merciful ideal society play disgust will ubermensch ultimate pinnacle victorious. Snare value law gains battle pious intentions revaluation strong. Insofar snare faith ideal oneself.
 
 ```{r}
-library(ComputationalMovementAnalysisData)
-library(ggplot2)
-
 # Include tables with the function "kable"
 
-knitr::kable(head(wildschwein_BE))
+knitr::kable(head(dataset))
 ```
 
 <!-- the following is just a placeholder text, remove it!-->
@@ -66,7 +69,7 @@ Revaluation evil aversion ultimate decrepit disgust decrepit eternal-return nobl
 ```{r}
 # include plots automatically
 
-ggplot(schreck_locations, aes(E, N)) +
+ggplot(dataset, aes(Lat, Long)) +
   geom_point() +
   coord_map()
 
@@ -87,3 +90,29 @@ Philosophy oneself passion play fearful self noble zarathustra deceptions sexual
 <!-- the following is just a placeholder text, remove it!-->
 Justice convictions spirit sexuality insofar free marvelous joy. Revaluation virtues mountains spirit fearful sexuality love endless. Society intentions will noble burying aversion moral. Insofar passion ultimate mountains of play gains depths joy christian reason christianity mountains dead. Mountains christianity play war holiest ascetic passion oneself derive grandeur. Against pinnacle hope joy burying ocean of horror disgust victorious faithful justice suicide.
 
+
+
+#### Proposal
+## Abstract 
+<!-- (50-60 words) -->
+
+## Research Questions
+<!-- (50-60 words) -->
+
+## Results / products
+<!-- What do you expect, anticipate? -->
+
+## Data
+<!-- What data will you use? Will you require additional context data? Where do you get this data from? Do you already have all the data? -->
+
+## Analytical concepts
+<!-- Which analytical concepts will you use? What conceptual movement spaces and respective modelling approaches of trajectories will you be using? What additional spatial analysis methods will you be using? -->
+
+## R concepts
+<!-- Which R concepts, functions, packages will you mainly use. What additional spatial analysis methods will you be using? -->
+
+## Risk analysis
+<!-- What could be the biggest challenges/problems you might face? What is your plan B? -->
+
+## Questions? 
+<!-- Which questions would you like to discuss at the coaching session? -->
