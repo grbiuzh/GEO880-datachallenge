@@ -12,7 +12,7 @@ library(knitr)
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 ```
 
-```{r,echo = FALSE, warning = FALSE, message = FALSE}
+```{r message=FALSE, warning=FALSE, =FALSE, include=FALSE}
 Sys.setenv(LANG = "en")
 library(readr)        # to import tabular data (e.g. csv)
 library(dplyr)        # to manipulate (tabular) data
@@ -41,22 +41,26 @@ dataFolder   <- here::here()
 RFolder      <- here::here()         
 figureFolder <- here::here("figs") 
 ```
+
 ```{r}
 deer <- read_delim(file.path(dataFolder, "all_deer_cleaned.csv"))
+sex <- read_delim(file.path(dataFolder, "sex.csv"))
 
+deer <- left_join(deer,sex, by = "reh")
 ```
 ## Abstract
 
 ## Introduction
 
 ```{r}
+deer <- deer %>% group_by(reh) %>% mutate(Name = randomNames(reh, ethnicity = 4)) #Give deer names
+
 head(deer)
 ```
 
-
 ## Material and Methods
 ```{r}
-deer <- deer %>% group_by(reh) %>% mutate(Name = randomNames(reh, ethnicity = 4))
+
 ```
 
 
