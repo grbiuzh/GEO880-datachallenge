@@ -42,7 +42,7 @@ figureFolder <- here::here("figs")
 
 ```{r}
 deer <- read_delim(file.path(dataFolder, "all_deer_complete.csv")) %>% data.frame()
-canton_zh <- st_read(file.path(dataFolder,"Luftbild-Bestandeskarte_-OGD/WALD_LUFTBILDBESTAND_F.shp"))
+canton_zh <- st_read(file.path(dataFolder,"Gemeindegrenzen_-OGD/UP_KANTON_F.shp"))
 ```
 ## Abstract
 
@@ -60,7 +60,8 @@ head(deer)
 ### Visualization
 
 ```{r}
-deer <- deer %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FALSE)
+deer <- deer %>% st_as_sf(coords = c("y", "x"), crs = 2056, remove = FALSE) %>% st_transform(crs = 2056)
+canton_zh <- canton_zh %>% st_transform(crs = 2056)
 
 ggplot()+
   geom_line(data = deer, aes(x=datetime_utc, y = reh))+
@@ -70,12 +71,9 @@ ggplot()+
   xlab("Date")
 
 ggplot()+
-  geom_sf(data = ZH_shp)+
-  geom_point(data = deer, aes(x = longitude, y=latitude, col = reh), size = .2)+
+  geom_sf(data = canton_zh)+
+  geom_point(data = deer, aes(x=longitude, y = latitude))+
   ggtitle("Tracking points for 15 different roe deer")
-
-ggplot()+
-  geom_sf(data = ZH_shp)
 
 deer <- deer %>% st_drop_geometry()
 
