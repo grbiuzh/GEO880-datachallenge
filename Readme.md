@@ -11,6 +11,7 @@ Analysis Geo 880**
 | **Student 2:** | Gregory Biland                 |
 
 ## Abstract (50-60 words)
+Animal movement has always been a complex field of study as it consists of and compiles the difficulties of ecology, geography and data science. This project seeks to merge these three disciplines as it tries to predict the future movement of Roe Deer through space with the usage of an aritificical neural network with constraints set up by typical biological behaviours of the Roe Deer.
 
 ## Research Questions (50-60 words)
 - What parameters are crucial for modeling and predicting deer movement patterns using an artificial neural network (ANN), and how much does the deers gender influence these models?
