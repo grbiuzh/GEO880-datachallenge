@@ -25,6 +25,7 @@ library(ggplot2)
 library(randomNames)
 library(caTools)
 library(caret)
+library(neuralnet)
 
 knitr::opts_chunk$set(
   message = F,
@@ -86,7 +87,9 @@ split = sample.split(deer, SplitRatio = 0.8)
 trainingset = subset(deer, split==TRUE)
 testset = subset(deer, split==FALSE)
 
-trainingset_clean <- select(trainingset, -c()) 
+trainingset_clean <- select(trainingset, -c(datetime_utc))
+
+
 testset_clean <- select(testset, -c())
 ```
 
@@ -96,6 +99,13 @@ set.seed(54)
 
 ann_model <- train(sex ~ ., data= trainingset_clean, method="nnet", maxit = 1, trace=FALSE, MaxNWts=2600)
 ann_model
+
+# Second ANN method
+
+nn=neuralnet(x ~ y. ,data=trainingset_clean, hidden=3,act.fct = "logistic",
+                linear.output = FALSE)
+plot(nn)
+
 
 ```
 
