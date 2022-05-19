@@ -26,6 +26,7 @@ library(randomNames)
 library(caTools)
 library(caret)
 library(neuralnet)
+library(trajr)
 
 knitr::opts_chunk$set(
   message = F,
@@ -54,26 +55,78 @@ canton_zh <- st_read(file.path(dataFolder,"Gemeindegrenzen_-OGD/UP_KANTON_F.shp"
 ZH_shp <- canton_zh %>% subset(select = c(geometry))
 
 head(deer)
+
+# Sex to binary: male = 0, female = 1, rename "reh" to "TierID"
+deer$sex[deer$sex == "m"] <- 0
+deer$sex[deer$sex == "f"] <- 1
+deer <- deer %>% rename(TierID = reh, DatetimeUTC = datetime_utc, E = x, N = y)
+
 ```
 
 ## Material and Methods
 
+### Geometr calculations
+
+```{r}
+deer <- deer %>% group_by(TierID) %>% mutate(
+  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC)),
+  steplength = sqrt((E - lead(E,1))^2+ (N - lead(N,1))^2))
+
+deer <- deer %>% mutate(speed = (steplength / timelag)*3.6) #km/h
+
+
+#Left or right turn (not yet working)
+# helper function that returns the length:
+segment_length <- function(v){
+  sqrt(sum(v^2))
+}
+
+turn <- function(v1, v2){
+    ## v1 and v2 are vectors with (x,y) components.
+
+    ## scale to unit length
+    v1 = v1 / d(v1)
+    v2 = v2 / d(v2)
+
+    ## rotate 90 degrees
+    v1r = c(v1[2], -v1[1])
+
+    ## compute dot product
+    v1r.v2 = v1r[1]*v2[1] + v1r[2]*v2[2]
+    if(v1r.v2 > 0){
+        return("R")
+    }
+    if(v1r.v2 < 0){
+        return("L")
+    }
+    return("S")
+
+}
+
+deer %>% turn((E - lead(E,1)), (N - lead(N,1)))
+
+#Sinuosity
+
+TrajAngles(c(deer$E,deer$N), compass.direction = NULL)
+```
+
+
 ### Visualization
 
 ```{r}
-deer <- deer %>% st_as_sf(coords = c("y", "x"), crs = 2056, remove = FALSE) %>% st_transform(crs = 2056)
+deer <- deer %>% st_as_sf(coords = c("N", "E"), crs = 2056, remove = FALSE) %>% st_transform(crs = 2056)
 canton_zh <- canton_zh %>% st_transform(crs = 2056)
 
 ggplot()+
-  geom_line(data = deer, aes(x=datetime_utc, y = reh))+
+  geom_line(data = deer, aes(x=DatetimeUTC, y = TierID))+
   ggtitle("Monitoring timespan for 15 different roe deer")+
   scale_y_discrete(limits=rev)+
   ylab("Deer")+
   xlab("Date")
 
 ggplot()+
-  geom_sf(data = canton_zh)+
-  geom_point(data = deer, aes(x=longitude, y = latitude))+
+  geom_path(data = deer, aes(x = E, y = N, col = TierID), alpha = 0.3)+
+  geom_point(data = deer, aes(x = E, y = N, col = TierID))+
   ggtitle("Tracking points for 15 different roe deer")
 
 deer <- deer %>% st_drop_geometry()
@@ -81,28 +134,27 @@ deer <- deer %>% st_drop_geometry()
 ```
 
 ```{r Test and Trainigdata}
-set.seed(55)
 
-split = sample.split(deer, SplitRatio = 0.8)
-trainingset = subset(deer, split==TRUE)
-testset = subset(deer, split==FALSE)
+#Create training and test data with 80/20% ratio
+set.seed(54)
+sample <- sample.int(n = nrow(deer), size = floor(0.8*nrow(deer)), replace = F)
+trainingset <- deer[sample, ]
+testset  <- deer[-sample, ]
 
-trainingset_clean <- select(trainingset, -c(datetime_utc))
-
-
-testset_clean <- select(testset, -c())
+trainingset_clean <- select(trainingset, -c(DatetimeUTC, TierID, latitude, longitude, TierID)) %>% na.omit()
+testset_clean <- select(testset, -c(DatetimeUTC, TierID, latitude, longitude, TierID)) %>% na.omit()
 ```
 
-
+### Artificial neural network 
 ```{r ANN}
 set.seed(54)
 
-ann_model <- train(sex ~ ., data= trainingset_clean, method="nnet", maxit = 1, trace=FALSE, MaxNWts=2600)
-ann_model
+ann_model <- train(E + N ~ ., data= trainingset_clean, method="nnet", maxit = 1, trace=FALSE, MaxNWts=2600)
+plot(ann_model)
 
 # Second ANN method
 
-nn=neuralnet(x ~ y. ,data=trainingset_clean, hidden=3,act.fct = "logistic",
+nn=neuralnet(E + N ~ .,data=trainingset_clean, hidden=3,act.fct = "logistic", 
                 linear.output = FALSE)
 plot(nn)
 
