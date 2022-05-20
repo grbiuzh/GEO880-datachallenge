@@ -45,6 +45,7 @@ figureFolder <- here::here("figs")
 ```{r}
 deer <- read_delim(file.path(dataFolder, "all_deer_complete.csv")) %>% data.frame()
 canton_zh <- st_read(file.path(dataFolder,"Gemeindegrenzen_-OGD/UP_KANTON_F.shp"))
+ASTK <- read_delim(file.path(dataFolder, "Arealstatistik.csv"))
 ```
 ## Abstract
 
@@ -52,7 +53,14 @@ canton_zh <- st_read(file.path(dataFolder,"Gemeindegrenzen_-OGD/UP_KANTON_F.shp"
 
 ```{r}
 #deer <- deer %>% group_by(reh) %>% mutate(Name = randomNames(reh, ethnicity = 4)) #Give deer names
-ZH_shp <- canton_zh %>% subset(select = c(geometry))
+canton_zh <- canton_zh %>% subset(KANTON == "Zürich")
+canton_zh <- canton_zh %>% st_set_crs(2056)
+
+plot(canton_zh$geometry)
+
+ASTK <- ASTK %>% st_as_sf(coords = c("N", "E"), crs = 2056, remove = FALSE) %>% st_transform(crs = 2056)
+ASTK_ZH <- st_contains(canton_zh, ASTK)
+ASTK_ZH <- ASTK_ZH %>% data.frame()
 
 head(deer)
 
@@ -114,7 +122,7 @@ TrajAngles(c(deer$E,deer$N), compass.direction = NULL)
 ### Visualization
 
 ```{r}
-deer <- deer %>% st_as_sf(coords = c("N", "E"), crs = 2056, remove = FALSE) %>% st_transform(crs = 2056)
+deer <- deer %>% st_as_sf(coords = c("N", "E"), remove = FALSE) %>% st_set_crs(2056)
 canton_zh <- canton_zh %>% st_transform(crs = 2056)
 
 ggplot()+
@@ -125,6 +133,7 @@ ggplot()+
   xlab("Date")
 
 ggplot()+
+  geom_sf(data = canton_zh)+
   geom_path(data = deer, aes(x = E, y = N, col = TierID), alpha = 0.3)+
   geom_point(data = deer, aes(x = E, y = N, col = TierID))+
   ggtitle("Tracking points for 15 different roe deer")
@@ -141,8 +150,8 @@ sample <- sample.int(n = nrow(deer), size = floor(0.8*nrow(deer)), replace = F)
 trainingset <- deer[sample, ]
 testset  <- deer[-sample, ]
 
-trainingset_clean <- select(trainingset, -c(DatetimeUTC, TierID, latitude, longitude, TierID)) %>% na.omit()
-testset_clean <- select(testset, -c(DatetimeUTC, TierID, latitude, longitude, TierID)) %>% na.omit()
+trainingset_clean <- select(trainingset, -c(DatetimeUTC, TierID, latitude, longitude)) %>% na.omit()
+testset_clean <- select(testset, -c(DatetimeUTC, TierID, latitude, longitude)) %>% na.omit()
 ```
 
 ### Artificial neural network 
