@@ -45,7 +45,8 @@ figureFolder <- here::here("figs")
 ```{r}
 deer <- read_delim(file.path(dataFolder, "all_deer_complete.csv")) %>% data.frame()
 canton_zh <- st_read(file.path(dataFolder,"Gemeindegrenzen_-OGD/UP_KANTON_F.shp"))
-ASTK <- read_delim(file.path(dataFolder, "Arealstatistik.csv"))
+# ASTK <- read_delim(file.path(dataFolder, "Arealstatistik.csv"))
+ASTK_ZH <- read_delim(file.path(dataFolder, "ASTK_ZH.csv"))
 ```
 ## Abstract
 
@@ -54,26 +55,29 @@ ASTK <- read_delim(file.path(dataFolder, "Arealstatistik.csv"))
 ```{r}
 #deer <- deer %>% group_by(reh) %>% mutate(Name = randomNames(reh, ethnicity = 4)) #Give deer names
 canton_zh <- canton_zh %>% subset(KANTON == "Zürich")
-canton_zh <- canton_zh %>% st_set_crs(2056)
+canton_zh <- canton_zh %>% st_transform(2056)
 
-plot(canton_zh$geometry)
+# ASTK <- ASTK %>% st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE)
+# ASTK_ZH <- st_join(canton_zh, ASTK, join = st_contains_properly, left=TRUE)
+# ASTK_ZH <- ASTK_ZH %>% st_drop_geometry()
+# write.csv(ASTK_ZH, file = "ASTK_ZH.csv", row.names=FALSE)
 
-ASTK <- ASTK %>% st_as_sf(coords = c("N", "E"), crs = 2056, remove = FALSE) %>% st_transform(crs = 2056)
-ASTK_ZH <- st_contains(canton_zh, ASTK)
-ASTK_ZH <- ASTK_ZH %>% data.frame()
-
-head(deer)
 
 # Sex to binary: male = 0, female = 1, rename "reh" to "TierID"
 deer$sex[deer$sex == "m"] <- 0
 deer$sex[deer$sex == "f"] <- 1
-deer <- deer %>% rename(TierID = reh, DatetimeUTC = datetime_utc, E = x, N = y)
+deer <- deer %>% rename(TierID = reh, DatetimeUTC = datetime_utc, N = x, E = y)
+
+deer <- deer %>% mutate(
+  E = E + 2000000,
+  N = N + 1000000
+)
 
 ```
 
 ## Material and Methods
 
-### Geometr calculations
+### Geometry calculations
 
 ```{r}
 deer <- deer %>% group_by(TierID) %>% mutate(
@@ -122,8 +126,7 @@ TrajAngles(c(deer$E,deer$N), compass.direction = NULL)
 ### Visualization
 
 ```{r}
-deer <- deer %>% st_as_sf(coords = c("N", "E"), remove = FALSE) %>% st_set_crs(2056)
-canton_zh <- canton_zh %>% st_transform(crs = 2056)
+deer <- deer %>% st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE)
 
 ggplot()+
   geom_line(data = deer, aes(x=DatetimeUTC, y = TierID))+
@@ -135,7 +138,9 @@ ggplot()+
 ggplot()+
   geom_sf(data = canton_zh)+
   geom_path(data = deer, aes(x = E, y = N, col = TierID), alpha = 0.3)+
-  geom_point(data = deer, aes(x = E, y = N, col = TierID))+
+  geom_point(data = deer, aes(x = E, y = N, col = TierID), size = .1)+
+  coord_sf(datum = 2056)+
+  theme_minimal()+
   ggtitle("Tracking points for 15 different roe deer")
 
 deer <- deer %>% st_drop_geometry()
@@ -150,8 +155,8 @@ sample <- sample.int(n = nrow(deer), size = floor(0.8*nrow(deer)), replace = F)
 trainingset <- deer[sample, ]
 testset  <- deer[-sample, ]
 
-trainingset_clean <- select(trainingset, -c(DatetimeUTC, TierID, latitude, longitude)) %>% na.omit()
-testset_clean <- select(testset, -c(DatetimeUTC, TierID, latitude, longitude)) %>% na.omit()
+trainingset_clean <- select(trainingset, -c(DatetimeUTC, latitude, longitude)) %>% na.omit()
+testset_clean <- select(testset, -c(DatetimeUTC, latitude, longitude)) %>% na.omit()
 ```
 
 ### Artificial neural network 
@@ -159,6 +164,7 @@ testset_clean <- select(testset, -c(DatetimeUTC, TierID, latitude, longitude)) %
 set.seed(54)
 
 ann_model <- train(E + N ~ ., data= trainingset_clean, method="nnet", maxit = 1, trace=FALSE, MaxNWts=2600)
+ann_model
 plot(ann_model)
 
 # Second ANN method
