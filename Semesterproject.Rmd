@@ -14,7 +14,8 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 ```{r message=FALSE, warning=FALSE, =FALSE, include=FALSE}
 Sys.setenv(LANG = "en")
-library(readr)        # to import tabular data (e.g. csv)
+library(readr)  # to import tabular data (e.g. csv)
+library(tidyr)
 library(dplyr)        # to manipulate (tabular) data
 library(sf)           # to handle spatial vector data
 library(terra)        # To handle raster data
@@ -42,7 +43,7 @@ RFolder      <- here::here()
 figureFolder <- here::here("figs") 
 ```
 
-```{r}
+```{r include=FALSE}
 deer <- read_delim(file.path(dataFolder, "all_deer_complete.csv")) %>% data.frame()
 canton_zh <- st_read(file.path(dataFolder,"Gemeindegrenzen_-OGD/UP_KANTON_F.shp"))
 # ASTK <- read_delim(file.path(dataFolder, "Arealstatistik.csv"))
@@ -71,7 +72,9 @@ deer <- deer %>% rename(TierID = reh, DatetimeUTC = datetime_utc, N = x, E = y)
 deer <- deer %>% mutate(
   E = E + 2000000,
   N = N + 1000000
-)
+) %>% subset(select = -c(longitude, latitude))
+
+deer <- deer %>% drop_na()
 
 ```
 
@@ -81,7 +84,7 @@ deer <- deer %>% mutate(
 
 ```{r}
 deer <- deer %>% group_by(TierID) %>% mutate(
-  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC)),
+  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC)), #timelag is in minutes
   steplength = sqrt((E - lead(E,1))^2+ (N - lead(N,1))^2))
 
 deer <- deer %>% mutate(speed = (steplength / timelag)*3.6) #km/h
@@ -115,28 +118,36 @@ turn <- function(v1, v2){
 
 }
 
-deer %>% turn((E - lead(E,1)), (N - lead(N,1)))
+deer %>% turn((E - lag(E,1)), (N - lead(N,1)))
 
 #Sinuosity
+deer <- TrajFromCoords(deer)
+deer <- mutate(angle = TrajAngles(deer))
 
-TrajAngles(c(deer$E,deer$N), compass.direction = NULL)
+TrajAngles(deer)
 ```
+
+```{r}
+# Resample to 30 seconds steps
+deer_resampled <- TrajResampleTime(deer, 0.01)
+deer_resampled <- TrajFromCoords(deer_resampled)
+```
+
 
 
 ### Visualization
 
 ```{r}
-deer <- deer %>% st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE)
+deer <- deer %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FALSE)
 
 ggplot()+
-  geom_line(data = deer, aes(x=DatetimeUTC, y = TierID))+
+  geom_line(data = deer, aes(x=DatetimeUTC, y = speed, col= TierID))+
   ggtitle("Monitoring timespan for 15 different roe deer")+
-  scale_y_discrete(limits=rev)+
   ylab("Deer")+
   xlab("Date")
 
 ggplot()+
-  geom_sf(data = canton_zh)+
+  geom_sf(data = canton_zh, fill = alpha("white", .1))+
   geom_path(data = deer, aes(x = E, y = N, col = TierID), alpha = 0.3)+
   geom_point(data = deer, aes(x = E, y = N, col = TierID), size = .1)+
   coord_sf(datum = 2056)+
