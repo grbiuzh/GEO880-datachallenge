@@ -74,8 +74,6 @@ deer <- deer %>% mutate(
   N = N + 1000000
 ) %>% subset(select = -c(longitude, latitude))
 
-deer <- deer %>% drop_na()
-
 ```
 
 ## Material and Methods
@@ -88,43 +86,42 @@ deer <- deer %>% group_by(TierID) %>% mutate(
   steplength = sqrt((E - lead(E,1))^2+ (N - lead(N,1))^2))
 
 deer <- deer %>% mutate(speed = (steplength / timelag)*3.6) #km/h
-
-
-#Left or right turn (not yet working)
-# helper function that returns the length:
-segment_length <- function(v){
-  sqrt(sum(v^2))
-}
-
-turn <- function(v1, v2){
-    ## v1 and v2 are vectors with (x,y) components.
-
-    ## scale to unit length
-    v1 = v1 / d(v1)
-    v2 = v2 / d(v2)
-
-    ## rotate 90 degrees
-    v1r = c(v1[2], -v1[1])
-
-    ## compute dot product
-    v1r.v2 = v1r[1]*v2[1] + v1r[2]*v2[2]
-    if(v1r.v2 > 0){
-        return("R")
-    }
-    if(v1r.v2 < 0){
-        return("L")
-    }
-    return("S")
-
-}
-
-deer %>% turn((E - lag(E,1)), (N - lead(N,1)))
+deer <- deer %>% drop_na() %>% data.frame()
 
 #Sinuosity
-deer <- TrajFromCoords(deer)
-deer <- mutate(angle = TrajAngles(deer))
+deer <- TrajFromCoords(deer) %>% subset(select = -c(DatetimeUTC))
+deer <- TrajSmoothSG(deer, 3, 101)
 
-TrajAngles(deer)
+
+characteriseTrajectory <- function(deer) {
+  # Measures of speed
+  derivs <- TrajDerivatives(deer)
+  mean_speed <- mean(derivs$speed)
+  sd_speed <- sd(derivs$speed)
+
+  # Measures of straightness
+  sinuosity <- TrajSinuosity(deer)
+  resampled <- TrajRediscretize(deer, .001)
+  Emax <- TrajEmax(resampled)
+
+  # Periodicity
+  corr <- TrajDirectionAutocorrelations(resampled, 60)
+  first_min <- TrajDAFindFirstMinimum(corr)
+
+  # Return a list with all of the statistics for this trajectory
+  list(sd_speed = sd_speed,
+       sinuosity = sinuosity,
+       Emax = Emax,
+       min_deltaS = first_min[1],
+       min_C = first_min[2]
+  )
+}
+
+# Calculate all stats for trajectories in the list
+# which was built in the previous example
+
+deer <- TrajsMergeStats(deer, characteriseTrajectory)
+
 ```
 
 ```{r}
@@ -132,8 +129,6 @@ TrajAngles(deer)
 deer_resampled <- TrajResampleTime(deer, 0.01)
 deer_resampled <- TrajFromCoords(deer_resampled)
 ```
-
-
 
 ### Visualization
 
@@ -184,6 +179,16 @@ nn=neuralnet(E + N ~ .,data=trainingset_clean, hidden=3,act.fct = "logistic",
                 linear.output = FALSE)
 plot(nn)
 
+
+```
+```{r}
+trj <- TrajGenerate()
+
+# Smooth before calculating derivatives
+smoothed <- TrajSmoothSG(trj, 3, 101)
+
+# Calculate speed and acceleration
+derivs <- TrajDerivatives(smoothed)
 
 ```
 
