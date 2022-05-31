@@ -16,12 +16,10 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 Sys.setenv(LANG = "en")
 library(readr)  # to import tabular data (e.g. csv)
 library(tidyr)
+library(tibble)
 library(dplyr)        # to manipulate (tabular) data
 library(sf)           # to handle spatial vector data
-library(terra)        # To handle raster data
 library(lubridate)    # To handle dates and times
-library(grid)
-library(gridExtra)
 library(ggplot2)
 library(randomNames)
 library(caTools)
@@ -61,8 +59,13 @@ Animal movement has always been a complex field of study as it consists of and c
 ## Methods and data
 
 ### Data
+```{r}
+#To test make subset of df
 
+deer <- subset(deer[1:100,])
 
+head(deer)
+```
 
 ### Preprocessing
 
@@ -77,13 +80,14 @@ canton_zh <- canton_zh %>% st_transform(2056)
 # write.csv(ASTK_ZH, file = "ASTK_ZH.csv", row.names=FALSE)
 
 # Sex to binary: male = 0, female = 1, rename "reh" to "TierID"
-deer$sex[deer$sex == "m"] <- 0
-deer$sex[deer$sex == "f"] <- 1
-deer <- deer %>% rename(TierID = reh, DatetimeUTC = datetime_utc, N = x, E = y)
+deer$sex[deer$sex == "m"] <- as.numeric(0)
+deer$sex[deer$sex == "f"] <- as.numeric(1)
+
+deer <- deer %>% rename(TierID = reh, DatetimeUTC = datetime_utc,)
 
 deer <- deer %>% mutate(
-  E = E + 2000000,
-  N = N + 1000000
+  y = y + 2000000,
+  x = x + 1000000
 )
 
 ```
@@ -92,42 +96,44 @@ deer <- deer %>% mutate(
 
 ```{r}
 deer <- deer %>% group_by(TierID) %>% mutate(
-  displacementTime = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC)), #displacementTime is in minutes
-  steplength = sqrt((E - lead(E,1))^2+ (N - lead(N,1))^2))
+  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC)), #timelag is in minutes
+  steplength = sqrt((y - lead(y,1))^2+ (x - lead(x,1))^2))
 
-deer <- deer %>% mutate(speed = (steplength / displacementTime)*3.6) #km/h
-deer <- deer %>% drop_na() %>% data.frame()
+deer <- deer %>% mutate(speed = (steplength / timelag)*3.6) #km/h -> Aber fallsch da steplength nicht immer gleich lang ist
+deer <- deer %>% drop_na() %>% data.frame() %>% subset(select= -c(longitude, latitude) )
+deer$sex <- as.numeric(as.character(deer$sex))
 
 deer <- TrajFromCoords(deer)
 
-characteriseTrajectory <- function(trj) {
-  # Measures of speed
-  derivs <- TrajDerivatives(trj)
-  mean_speed <- mean(derivs$speed)
-  sd_speed <- sd(derivs$speed)
+# Measures of speed
+derivs <- TrajDerivatives(deer)
 
-  # Measures of straightness
-  sinuosity <- TrajSinuosity(trj)
-  resampled <- TrajRediscretize(trj, .001)
-  Emax <- TrajEmax(resampled)
+deer <- deer %>% 
+  mutate(
+  mean_speed = mean(derivs$speed),
+  sd_speed = sd(derivs$speed),
+  sinuosity = TrajSinuosity(deer),
+  Emax = TrajEmax(TrajRediscretize(deer, .001)),
+  min_deltaS = TrajDAFindFirstMinimum(TrajDirectionAutocorrelations(TrajRediscretize(deer, .001), 1))[1],
+  min_C = TrajDAFindFirstMinimum(TrajDirectionAutocorrelations(TrajRediscretize(deer, .001), 1))[2]
+)
 
-  # Periodicity
-  corr <- TrajDirectionAutocorrelations(resampled, 60)
-  first_min <- TrajDAFindFirstMinimum(corr)
+#assign new columns for predicted values
 
-  # Return a list with all of the statistics for this trajectory
-  list(sd_speed = sd_speed,
-       sinuosity = sinuosity,
-       Emax = Emax,
-       min_deltaS = first_min[1],
-       min_C = first_min[2]
-  )
-}
+# Next x (nx): x coordinate at next moment
+# Next y (ny): y coordinate at next moment
+# dx: delta X = nx — x
+# dy: delta Y = ny — y
 
-# Calculate all stats for trajectories in the list
-# which was built in the previous example
+deer <- deer %>%
+  add_column(FutLat="",
+             FutLon="")
 
-deer <- TrajsMergeStats(deer, characteriseTrajectory)
+```
+### Arealstatistik
+
+```{r}
+ASTK_ZH
 ```
 
 ```{r}
@@ -167,8 +173,8 @@ sample <- sample.int(n = nrow(deer), size = floor(0.8*nrow(deer)), replace = F)
 trainingset <- deer[sample, ]
 testset  <- deer[-sample, ]
 
-trainingset_clean <- select(trainingset, -c(DatetimeUTC, latitude, longitude)) %>% na.omit()
-testset_clean <- select(testset, -c(DatetimeUTC, latitude, longitude)) %>% na.omit()
+trainingset_clean <- select(trainingset, -c(DatetimeUTC, y, x)) %>% na.omit()
+testset_clean <- select(testset, -c(DatetimeUTC, y, x)) %>% na.omit()
 ```
 
 ### Artificial neural network 
@@ -185,16 +191,17 @@ nn=neuralnet(E + N ~ .,data=trainingset_clean, hidden=3,act.fct = "logistic",
                 linear.output = FALSE)
 plot(nn)
 
+## Prediction using neural network
+Predict=compute(nn,test)
+Predict$net.result
+
+# Converting probabilities into binary classes setting threshold level 0.5
+prob <- Predict$net.result
+pred <- ifelse(prob>0.5, 1, 0)
+pred
 
 ```
 ```{r}
-trj <- TrajGenerate()
-
-# Smooth before calculating derivatives
-smoothed <- TrajSmoothSG(trj, 3, 101)
-
-# Calculate speed and acceleration
-derivs <- TrajDerivatives(smoothed)
 
 ```
 
