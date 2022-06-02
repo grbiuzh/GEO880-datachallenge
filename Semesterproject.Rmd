@@ -126,8 +126,11 @@ deer <- deer %>%
 # dy: delta Y = ny — y
 
 deer <- deer %>%
-  add_column(FutLat="",
-             FutLon="")
+  add_column(FutLat= "",
+             FutLon= "") 
+
+deer$FutLon <- NA
+deer$FutLat <- NA
 
 ```
 ### Arealstatistik
@@ -137,68 +140,58 @@ ASTK_ZH
 ```
 
 ```{r}
-deer <- deer %>% st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE)
+deer <- deer %>% st_as_sf(coords = c("y", "x"), crs = 2056, remove = FALSE)
 
 ggplot()+
   geom_line(data = deer, aes(x=DatetimeUTC, y = speed, col= TierID))+
   ggtitle("Monitoring timespan for 15 different roe deer")+
   ylab("Deer")+
-  xlab("Date")
+  xlab("speed")
 
 ggplot()+
-  geom_sf(data = canton_zh, fill = alpha("white", .1))+
-  geom_path(data = deer, aes(x = E, y = N, col = TierID), alpha = 0.3)+
-  geom_point(data = deer, aes(x = E, y = N, col = TierID), size = .1)+
+  # geom_sf(data = canton_zh, fill = alpha("white", .1))+
+  geom_path(data = deer, aes(x = x, y = y, col = TierID), alpha = 0.3)+
+  geom_point(data = deer, aes(x = x, y = y, col = TierID), size = .1)+
   coord_sf(datum = 2056)+
   theme_minimal()+
-  ggtitle("Tracking points for 15 different roe deer")
+  ggtitle("Tracking points for roe deer")
 
 deer <- deer %>% st_drop_geometry()
 
 ```
 
-```{r}
-# Resample to 30 seconds steps
-deer_resampled <- TrajResampleTime(deer, 0.01)
-deer_resampled <- TrajFromCoords(deer_resampled)
-```
-
 ### Methods
 
 ```{r Test and Trainigdata}
-
 #Create training and test data with 80/20% ratio
 set.seed(54)
+
 sample <- sample.int(n = nrow(deer), size = floor(0.8*nrow(deer)), replace = F)
 trainingset <- deer[sample, ]
 testset  <- deer[-sample, ]
 
-trainingset_clean <- select(trainingset, -c(DatetimeUTC, y, x)) %>% na.omit()
-testset_clean <- select(testset, -c(DatetimeUTC, y, x)) %>% na.omit()
+trainingset <- select(trainingset, -c(DatetimeUTC, polar, displacement))
+testset <- select(testset, -c(DatetimeUTC, polar, displacement))
 ```
 
 ### Artificial neural network 
 ```{r ANN}
 set.seed(54)
 
-ann_model <- train(E + N ~ ., data= trainingset_clean, method="nnet", maxit = 1, trace=FALSE, MaxNWts=2600)
-ann_model
-plot(ann_model)
-
 # Second ANN method
 
-nn=neuralnet(E + N ~ .,data=trainingset_clean, hidden=3,act.fct = "logistic", 
+model1 = neuralnet(FutLat ~ .,data=trainingset, hidden=3,act.fct = "logistic", 
                 linear.output = FALSE)
-plot(nn)
+
+model1 = neuralnet(FutLon ~ .,data=trainingset_clean, hidden=3,act.fct = "logistic", 
+                linear.output = FALSE)
 
 ## Prediction using neural network
-Predict=compute(nn,test)
-Predict$net.result
+Predict_x=compute(nn,model1)
+Predict_y=compute(nn,model1)
 
-# Converting probabilities into binary classes setting threshold level 0.5
-prob <- Predict$net.result
-pred <- ifelse(prob>0.5, 1, 0)
-pred
+Predict_x$net.result
+Predict_y$net.result
 
 ```
 ```{r}
