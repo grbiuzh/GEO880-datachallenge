@@ -26,6 +26,7 @@ library(caTools)
 library(caret)
 library(neuralnet)
 library(trajr)
+library(raster)
 
 knitr::opts_chunk$set(
   message = F,
@@ -83,12 +84,34 @@ canton_zh <- canton_zh %>% st_transform(2056)
 deer$sex[deer$sex == "m"] <- as.numeric(0)
 deer$sex[deer$sex == "f"] <- as.numeric(1)
 
-deer <- deer %>% rename(TierID = reh, DatetimeUTC = datetime_utc,)
+deer <- deer %>% rename(TierID = reh, DatetimeUTC = datetime_utc)
 
 deer <- deer %>% mutate(
   y = y + 2000000,
   x = x + 1000000
 )
+
+# Making a bounding box of the relevant study area
+deer <- deer %>% st_as_sf(coords = c("y", "x"), crs = 2056, remove = FALSE) 
+bbox <- st_make_grid(st_bbox(deer), n = 1)
+bbox_df <- bbox[[1]][[1]] %>% data.frame()
+deer <- deer %>% st_drop_geometry()
+
+# Making the bounding box a bit bigger, so that our predictions can go further outside, 1km on every side
+bbox_df$X1[1] = bbox_df$X1[1] - 1000
+bbox_df$X1[2] = bbox_df$X1[2] + 1000
+bbox_df$X1[3] = bbox_df$X1[3] + 1000
+bbox_df$X1[4] = bbox_df$X1[4] - 1000
+bbox_df$X1[5] = bbox_df$X1[5] - 1000
+
+bbox_df$X2[1] = bbox_df$X2[1] - 1000
+bbox_df$X2[2] = bbox_df$X2[2] - 1000
+bbox_df$X2[3] = bbox_df$X2[3] + 1000
+bbox_df$X2[4] = bbox_df$X2[4] + 1000
+bbox_df$X2[5] = bbox_df$X2[5] - 1000
+bbox_sf <- bbox_df %>% st_as_sf(coords = c('X1', 'X2'), crs = 2056) %>% 
+  summarise(geometry = st_combine(geometry)) %>%
+  st_cast("POLYGON")
 
 ```
 
@@ -96,14 +119,15 @@ deer <- deer %>% mutate(
 
 ```{r}
 deer <- deer %>% group_by(TierID) %>% mutate(
-  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC)), #timelag is in minutes
+  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')), #timelag is in minutes
   steplength = sqrt((y - lead(y,1))^2+ (x - lead(x,1))^2))
 
-deer <- deer %>% mutate(speed = (steplength / timelag)*3.6) #km/h -> Aber fallsch da steplength nicht immer gleich lang ist
+deer <- deer %>% mutate(speed = (steplength / timelag)) #km/h -> Aber falsch da steplength nicht immer gleich lang ist --> sött doch eigentlich scho stimme wil ja steplength und timelag beidi grösser werded, glicht sich us, m/s macht glaub au meh sinn solang mer mit koordinate schaffed wo in meter sind und das trajr package au immer mit m/s schaffed 
 deer <- deer %>% drop_na() %>% data.frame() %>% subset(select= -c(longitude, latitude) )
 deer$sex <- as.numeric(as.character(deer$sex))
 
-deer <- TrajFromCoords(deer)
+deer <- TrajFromCoords(deer, timeCol = 'DatetimeUTC') 
+deer <- deer %>% mutate(displacementTime = as.integer(displacementTime))
 
 # Measures of speed
 derivs <- TrajDerivatives(deer)
@@ -112,8 +136,8 @@ deer <- deer %>%
   mutate(
   mean_speed = mean(derivs$speed),
   sd_speed = sd(derivs$speed),
-  sinuosity = TrajSinuosity(deer),
-  Emax = TrajEmax(TrajRediscretize(deer, .001)),
+  sinuosity = TrajSinuosity(deer), 
+  Emax = TrajEmax(TrajRediscretize(deer, .001)), # funktioniert das überhaupt mit dem rediscretize ide funktion? müsstmer denn nöd grad sganze trajectory file, dasmer überall de gliche resamplete steptime hend?
   min_deltaS = TrajDAFindFirstMinimum(TrajDirectionAutocorrelations(TrajRediscretize(deer, .001), 1))[1],
   min_C = TrajDAFindFirstMinimum(TrajDirectionAutocorrelations(TrajRediscretize(deer, .001), 1))[2]
 )
@@ -136,11 +160,38 @@ deer$FutLat <- NA
 ### Arealstatistik
 
 ```{r}
-ASTK_ZH
+
+# Extracting the relevant cells of the Arealstatistik
+ASTK_ZH <- ASTK_ZH %>% st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE)
+ASTK_bbox <- st_join(bbox_sf, ASTK_ZH, join = st_contains_properly, left=TRUE)
+ASTK_bbox <- ASTK_bbox %>% st_drop_geometry(ASTK_bbox)
+
+# Chosing which classification of the Arealstatistik we want to use
+ASTK_bbox <- ASTK_bbox %>% dplyr::select(RELI, E, N, AS18_72)
+
+# Making an empty raster with the extent of the Arealstatistik
+empty_raster <- raster(
+  ncols = (range(ASTK_bbox$E)[2]-range(ASTK_bbox$E)[1])/100+1, 
+  nrows =  (range(ASTK_bbox$N)[2]-range(ASTK_bbox$N)[1])/100+1, 
+  xmn = min(ASTK_bbox$E)-50, 
+  xmx = max(ASTK_bbox$E)+50, 
+  ymn = min(ASTK_bbox$N)-50,
+  ymx = max(ASTK_bbox$N)+50
+  )
+
+# Populating the raster
+ASTK_raster <- rasterize(dplyr::select(ASTK_bbox, E, N), empty_raster, ASTK_bbox$AS18_72) 
+
+# Adding arealstatistik values to deer data
+deer <- data.frame(deer)
+deer$astk <- as.vector(extract(ASTK_raster, st_as_sf(deer, coords = c("x", "y")) , 'simple'))
+
+
 ```
 
 ```{r}
 deer <- deer %>% st_as_sf(coords = c("y", "x"), crs = 2056, remove = FALSE)
+raster_vis <- as.data.frame(ASTK_raster, xy = TRUE)
 
 ggplot()+
   geom_line(data = deer, aes(x=DatetimeUTC, y = speed, col= TierID))+
@@ -150,11 +201,19 @@ ggplot()+
 
 ggplot()+
   # geom_sf(data = canton_zh, fill = alpha("white", .1))+
+  geom_sf(data = bbox_sf)+
+  geom_raster(data = raster_vis, aes(x = x, y = y, alpha = layer))+
   geom_path(data = deer, aes(x = x, y = y, col = TierID), alpha = 0.3)+
   geom_point(data = deer, aes(x = x, y = y, col = TierID), size = .1)+
   coord_sf(datum = 2056)+
   theme_minimal()+
   ggtitle("Tracking points for roe deer")
+  
+
+ggplot()+
+  geom_raster(data = raster_vis, aes(x = x, y = y, alpha = layer))+
+  coord_sf(datum =2056)+
+  geom_point(data = deer, aes(x,y, color = as.factor(astk)))
 
 deer <- deer %>% st_drop_geometry()
 
@@ -200,6 +259,9 @@ Predict_y$net.result
 
 
 ## Results
+```{r}
+
+```
 
 
 ## Discussion
