@@ -27,6 +27,9 @@ library(caret)
 library(neuralnet)
 library(trajr)
 library(raster)
+library(h2o)
+
+h2o.init()
 
 knitr::opts_chunk$set(
   message = F,
@@ -43,10 +46,13 @@ figureFolder <- here::here("figs")
 ```
 
 ```{r include=FALSE}
+
 deer <- read_delim(file.path(dataFolder, "all_deer_complete.csv")) %>% data.frame()
+# deer <- h2o.importFile(file.path(dataFolder, "all_deer_complete.csv")) #https://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/deep-learning.html
+
 canton_zh <- st_read(file.path(dataFolder,"Gemeindegrenzen_-OGD/UP_KANTON_F.shp"))
-# ASTK <- read_delim(file.path(dataFolder, "Arealstatistik.csv"))
 ASTK_ZH <- read_delim(file.path(dataFolder, "ASTK_ZH.csv"))
+# ASTK <- read_delim(file.path(dataFolder, "Arealstatistik.csv"))
 ```
 
 ## Abstract
@@ -62,7 +68,6 @@ Animal movement has always been a complex field of study as it consists of and c
 ### Data
 ```{r}
 #To test make subset of df
-
 deer <- subset(deer[1:100,])
 
 head(deer)
@@ -115,6 +120,13 @@ bbox_sf <- bbox_df %>% st_as_sf(coords = c('X1', 'X2'), crs = 2056) %>%
 
 ```
 
+#Rename deer as numeric 
+```{r}
+deer <- deer %>%
+    mutate(TierID = recode(TierID, RE01 = 1))
+```
+
+
 ### Geometry calculations
 
 ```{r}
@@ -156,6 +168,9 @@ deer <- deer %>%
 deer$FutLon <- NA
 deer$FutLat <- NA
 
+deer$FutLon <- as.numeric(as.character(deer$FutLon))
+deer$FutLat <- as.numeric(as.character(deer$FutLat))
+
 ```
 ### Arealstatistik
 
@@ -164,7 +179,7 @@ deer$FutLat <- NA
 # Extracting the relevant cells of the Arealstatistik
 ASTK_ZH <- ASTK_ZH %>% st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE)
 ASTK_bbox <- st_join(bbox_sf, ASTK_ZH, join = st_contains_properly, left=TRUE)
-ASTK_bbox <- ASTK_bbox %>% st_drop_geometry(ASTK_bbox)
+ASTK_bbox <- ASTK_bbox %>% st_drop_geometry()
 
 # Chosing which classification of the Arealstatistik we want to use
 ASTK_bbox <- ASTK_bbox %>% dplyr::select(RELI, E, N, AS18_72)
@@ -194,7 +209,7 @@ deer <- deer %>% st_as_sf(coords = c("y", "x"), crs = 2056, remove = FALSE)
 raster_vis <- as.data.frame(ASTK_raster, xy = TRUE)
 
 ggplot()+
-  geom_line(data = deer, aes(x=DatetimeUTC, y = speed, col= TierID))+
+  geom_line(data = deer, aes(x=time, y = speed, col= TierID))+
   ggtitle("Monitoring timespan for 15 different roe deer")+
   ylab("Deer")+
   xlab("speed")
@@ -229,8 +244,13 @@ sample <- sample.int(n = nrow(deer), size = floor(0.8*nrow(deer)), replace = F)
 trainingset <- deer[sample, ]
 testset  <- deer[-sample, ]
 
-trainingset <- select(trainingset, -c(DatetimeUTC, polar, displacement))
-testset <- select(testset, -c(DatetimeUTC, polar, displacement))
+trainingset <- dplyr::select(trainingset, -c(time, polar, displacement, FutLat, FutLon))
+
+trainingset_h2o <- trainingset %>% as.h2o()
+
+testset <- dplyr::select(testset, -c(time, polar, displacement, FutLat, FutLon))
+
+testset_h2o <- testset %>% as.h2o()
 ```
 
 ### Artificial neural network 
@@ -238,25 +258,26 @@ testset <- select(testset, -c(DatetimeUTC, polar, displacement))
 set.seed(54)
 
 # Second ANN method
+model1 = neuralnet(x ~ y + sex + timelag + speed + steplength + displacementTime ,data=trainingset, hidden=79, act.fct = "logistic", 
+                linear.output = FALSE, stepmax = 1000, rep = 100)
 
-model1 = neuralnet(FutLat ~ .,data=trainingset, hidden=3,act.fct = "logistic", 
-                linear.output = FALSE)
-
-model1 = neuralnet(FutLon ~ .,data=trainingset_clean, hidden=3,act.fct = "logistic", 
-                linear.output = FALSE)
+model2 = neuralnet(y ~ x + sex + timelag + speed + steplength + displacementTime ,data=trainingset, hidden=79, act.fct = "logistic", linear.output = FALSE, stepmax = 1000, rep = 100)
 
 ## Prediction using neural network
-Predict_x=compute(nn,model1)
-Predict_y=compute(nn,model1)
+Predict_x=compute(model1, testset)
+Predict_y=compute(model2, testset)
 
 Predict_x$net.result
 Predict_y$net.result
 
+
+model_h2o = h2o.deeplearning(x = c(y, sex, timelag, speed, steplength, displacementTime), y = x, training_frame = trainingset_h2o, validation_frame = testset_h2o, activation = "Rectifier", hidden = rep(150,3), epochs = 1000)
+
 ```
+
 ```{r}
 
 ```
-
 
 ## Results
 ```{r}
