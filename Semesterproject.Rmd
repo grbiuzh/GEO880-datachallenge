@@ -228,7 +228,12 @@ ggplot()+
 ggplot()+
   geom_raster(data = raster_vis, aes(x = x, y = y, alpha = layer))+
   coord_sf(datum =2056)+
-  geom_point(data = deer, aes(x,y, color = as.factor(astk)))
+  geom_point(data = deer, aes(x,y, color = as.factor(astk)))+
+  geom_path(data = deer, aes(x = x, y = y), alpha = 0.3)+
+  coord_sf(datum = 2056)+
+  theme_minimal()+
+  ggtitle("Tracking points for roe deer with the Arealstatistik")
+
 
 deer <- deer %>% st_drop_geometry()
 
