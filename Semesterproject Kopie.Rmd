@@ -60,7 +60,7 @@ Animal movement has always been a complex field of study as it consists of and c
 ## Background and research goals
 - What parameters are crucial for modeling and predicting deer movement patterns using an artificial neural network (ANN), and how much does the deers gender influence these models?
 
-- Does the articifical neural network differentiate significantly between the deers movement in different kind of landscape spaces, for example forest vs on an open grass field.
+- Does the artificial neural network differentiate significantly between the deers movement in different kind of landscape spaces, for example forest vs on an open grass field.
 
 ## Methods and data
 
@@ -88,14 +88,15 @@ deer$sex[deer$sex == "m"] <- as.numeric(0)
 deer$sex[deer$sex == "f"] <- as.numeric(1)
 
 deer <- deer %>% rename(TierID = reh, DatetimeUTC = datetime_utc)
+colnames(deer)[c(3,4)] <- c("x","y")
 
 deer <- deer %>% mutate(
-  y = y + 1000000,
-  x = x + 2000000
+  x = x + 2000000,
+  y = y + 1000000
 )
 
 # Making a bounding box of the relevant study area
-deer <- deer %>% st_as_sf(coords = c("y", "x"), crs = 2056, remove = FALSE) 
+deer <- deer %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FALSE) 
 bbox <- st_make_grid(st_bbox(deer), n = 1)
 bbox_df <- bbox[[1]][[1]] %>% data.frame()
 deer <- deer %>% st_drop_geometry()
@@ -112,7 +113,7 @@ bbox_df$X2[2] = bbox_df$X2[2] - 1000
 bbox_df$X2[3] = bbox_df$X2[3] + 1000
 bbox_df$X2[4] = bbox_df$X2[4] + 1000
 bbox_df$X2[5] = bbox_df$X2[5] - 1000
-bbox_sf <- bbox_df %>% st_as_sf(coords = c('X2', 'X1'), crs = 2056)
+bbox_sf <- bbox_df %>% st_as_sf(coords = c('X1', 'X2'), crs = 2056)
 
 bbox_sf <- bbox_sf %>% 
   summarise(geometry = st_combine(geometry)) %>%
@@ -132,7 +133,7 @@ deer <- deer %>% mutate(sex = as.numeric(sex))
 ```{r}
 #Plot data for overview
 deer_sf_LL <- deer %>% st_as_sf(coords = c("longitude", "latitude"), crs = 2056, remove = FALSE)
-deer_sf <- deer %>% st_as_sf(coords = c("y", "x"), crs = 2056, remove = FALSE)
+deer_sf <- deer %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FALSE)
 ggplot()+
   geom_sf(data=bbox_sf, alpha=.1)+
   geom_path(data = deer,aes(x,y,  col = TierID))+
@@ -150,22 +151,88 @@ leaf_sf_col(deer_sf_LL,
 ### Geometry calculations
 ```{r}
 deer <- deer %>% group_by(TierID) %>% mutate(
-  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')), #timelag is in minutes
+  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')), #timelag is in seconds
   steplength = sqrt((y - lead(y,1))^2+ (x - lead(x,1))^2))
 
 deer <- deer %>% mutate(speed = (steplength / timelag)) #speed is in meter per minute
 deer <- deer %>% drop_na() %>% data.frame() %>% subset(select= -c(longitude, latitude) )
 ```
 
+### Outlier Handling
+```{r}
+
+deer_quantiles_speed <- deer %>% group_by(TierID) %>% summarize(qua1 = quantile(speed, 0.01, na.rm = TRUE), qua2 = quantile(speed, 0.99, na.rm = TRUE))
+
+deer <- deer %>% split(deer$TierID)
+
+#gruusig ich weiss, schlah mi jetzt nöd mit dene blöde r funktione ume sorry x)
+deer$RE01 <- deer$RE01[deer$RE01$speed >= deer_quantiles_speed$qua1[1] & 
+                       deer$RE01$speed <= deer_quantiles_speed$qua2[1],]
+deer$RE02 <- deer$RE02[deer$RE02$speed >= deer_quantiles_speed$qua1[2] & 
+                       deer$RE02$speed <= deer_quantiles_speed$qua2[2],]
+deer$RE03 <- deer$RE03[deer$RE03$speed >= deer_quantiles_speed$qua1[3] & 
+                       deer$RE03$speed <= deer_quantiles_speed$qua2[3],]
+deer$RE04 <- deer$RE04[deer$RE04$speed >= deer_quantiles_speed$qua1[4] & 
+                       deer$RE04$speed <= deer_quantiles_speed$qua2[4],]
+deer$RE05 <- deer$RE05[deer$RE05$speed >= deer_quantiles_speed$qua1[5] & 
+                       deer$RE05$speed <= deer_quantiles_speed$qua2[5],]
+deer$RE06 <- deer$RE06[deer$RE06$speed >= deer_quantiles_speed$qua1[6] & 
+                       deer$RE06$speed <= deer_quantiles_speed$qua2[6],]
+deer$RE07 <- deer$RE07[deer$RE07$speed >= deer_quantiles_speed$qua1[7] & 
+                       deer$RE07$speed <= deer_quantiles_speed$qua2[7],]
+deer$RE08 <- deer$RE08[deer$RE08$speed >= deer_quantiles_speed$qua1[8] & 
+                       deer$RE08$speed <= deer_quantiles_speed$qua2[8],]
+deer$RE09 <- deer$RE09[deer$RE09$speed >= deer_quantiles_speed$qua1[9] & 
+                       deer$RE09$speed <= deer_quantiles_speed$qua2[9],]
+deer$RE010 <- deer$RE010[deer$RE010$speed >= deer_quantiles_speed$qua1[10] & 
+                       deer$RE010$speed <= deer_quantiles_speed$qua2[10],]
+deer$RE011 <- deer$RE011[deer$RE011$speed >= deer_quantiles_speed$qua1[11] & 
+                       deer$RE011$speed <= deer_quantiles_speed$qua2[11],]
+deer$RE012 <- deer$RE012[deer$RE012$speed >= deer_quantiles_speed$qua1[12] & 
+                       deer$RE012$speed <= deer_quantiles_speed$qua2[12],]
+deer$RE013 <- deer$RE013[deer$RE013$speed >= deer_quantiles_speed$qua1[13] & 
+                       deer$RE013$speed <= deer_quantiles_speed$qua2[13],]
+deer$RE014 <- deer$RE014[deer$RE014$speed >= deer_quantiles_speed$qua1[14] & 
+                       deer$RE014$speed <= deer_quantiles_speed$qua2[14],]
+deer$RE015 <- deer$RE015[deer$RE015$speed >= deer_quantiles_speed$qua1[15] & 
+                       deer$RE015$speed <= deer_quantiles_speed$qua2[15],]
+
+deer_cleaned <- do.call(rbind, deer)
+
+# Recalculating timelag, steplength and speed
+
+deer_cleaned <- deer_cleaned %>% group_by(TierID) %>% mutate(
+  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')), #timelag is in minutes
+  steplength = sqrt((y - lead(y,1))^2+ (x - lead(x,1))^2)) %>% mutate(speed = (steplength / timelag))
+
+
+```
+
+
+```{r}
+# So wärs mit 0.01 und 0.99 percentil removed, chönd au no meh filtere
+ggplot()+
+  geom_sf(data=bbox_sf, alpha=.1)+
+  geom_path(data = deer_cleaned,aes(x,y,  col = TierID))+
+  geom_point(data = deer_cleaned,aes(x,y, col = TierID))+
+  ggtitle("Movement patterns for 15 different roe deer with the bounding box for the observation field around")+
+  xlab("X")+
+  ylab("Y")+
+  theme_minimal() +
+  coord_sf(datum = 2056)
+```
+
+
+
 ```{r}
 ggplot()+
-  geom_line(data = deer, aes(x=DatetimeUTC, y = speed, col= TierID))+
+  geom_line(data = deer_cleaned, aes(x=DatetimeUTC, y = speed, col= TierID))+
   ggtitle("Monitoring timespan for 15 different roe deer")+
   ylab("Speed [m/s]")+
   xlab("Deer")
 
 ggplot()+
-  geom_line(data = deer, aes(x=DatetimeUTC, y = steplength, col= TierID))+
+  geom_line(data = deer_cleaned, aes(x=DatetimeUTC, y = steplength, col= TierID))+
   ggtitle("Monitoring timespan for 15 different roe deer")+
   ylab("Steplegth [m]")+
   xlab("Deer")
@@ -174,6 +241,18 @@ ggplot()+
 
 ### Arealstatistik
 ```{r}
+
+# Updating bounding box
+bbox_df$X2[c(1,2,5)] <- min(deer_cleaned$y) - 1000
+
+bbox_sf <- bbox_df %>% st_as_sf(coords = c('X1', 'X2'), crs = 2056)
+bbox_sf <- bbox_sf %>% 
+  summarise(geometry = st_combine(geometry)) %>%
+  st_cast("POLYGON")
+bbox_sf <- bbox_sf %>% st_transform(2056)
+
+
+
 # Extracting the relevant cells of the Arealstatistik
 ASTK_ZH <- ASTK_ZH %>% st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE)
 ASTK_bbox <- st_join(bbox_sf, ASTK_ZH, join = st_contains_properly, left=TRUE)
@@ -196,8 +275,8 @@ empty_raster <- raster(
 ASTK_raster <- rasterize(dplyr::select(ASTK_bbox, E, N), empty_raster, ASTK_bbox$AS18_72) 
 
 # Adding arealstatistik values to deer data
-deer <- data.frame(deer)
-deer <- deer %>% mutate(astk = as.vector(extract(ASTK_raster, st_as_sf(deer, coords = c("x", "y")) , 'simple')))
+deer_cleaned <- data.frame(deer_cleaned)
+deer_cleaned <- deer_cleaned %>% mutate(astk = as.vector(extract(ASTK_raster, st_as_sf(deer_cleaned, coords = c("x", "y")) , 'simple')))
 ```
 
 ```{r}
@@ -207,8 +286,8 @@ ggplot()+
   # geom_sf(data = canton_zh, fill = alpha("white", .1))+
   geom_sf(data = bbox_sf)+
   geom_raster(data = raster_vis, aes(x = x, y = y, alpha = layer))+
-  geom_path(data = deer, aes(x = x, y = y, col = TierID), alpha = 0.3)+
-  geom_point(data = deer, aes(x = x, y = y, col = TierID), size = .1)+
+  geom_path(data = deer_cleaned, aes(x = x, y = y, col = TierID), alpha = 0.3)+
+  geom_point(data = deer_cleaned, aes(x = x, y = y, col = TierID), size = .1)+
   coord_sf(datum = 2056)+
   theme_minimal()+
   ggtitle("Tracking points for roe deer")
@@ -216,9 +295,8 @@ ggplot()+
 ggplot()+
   geom_raster(data = raster_vis, aes(x = x, y = y, alpha = layer))+
   coord_sf(datum = 2056)+
-  geom_point(data = deer, aes(x,y, color = as.factor(astk)))+
-  geom_path(data = deer, aes(x = x, y = y), alpha = 0.3)+
-  coord_sf(datum = 2056)+
+  geom_point(data = deer_cleaned, aes(x,y, color = as.factor(astk)))+
+  geom_path(data = deer_cleaned, aes(x = x, y = y), alpha = 0.3)+
   theme_minimal()+
   ggtitle("Tracking points for roe deer with the Arealstatistik")
 ```
@@ -226,9 +304,9 @@ ggplot()+
 ### Methods
 ```{r}
 # Filte roe deer 1,2 and 3 and change coordinates to sf object
-deer_01 <- deer %>% filter(TierID == "RE01")
-deer_02 <- deer %>% filter(TierID == "RE02")
-deer_03 <- deer %>% filter(TierID == "RE03")
+deer_01 <- deer_cleaned %>% filter(TierID == "RE01")
+deer_02 <- deer_cleaned %>% filter(TierID == "RE02")
+deer_03 <- deer_cleaned %>% filter(TierID == "RE03")
 
 deer1_3 <- rbind(deer_01, deer_02, deer_03)
 
