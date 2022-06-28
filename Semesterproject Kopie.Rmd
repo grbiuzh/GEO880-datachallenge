@@ -12,7 +12,7 @@ library(knitr)
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 ```
 
-```{r message=FALSE, warning=FALSE, =FALSE, include=FALSE}
+```{r, message=FALSE, warning=FALSE,, include=FALSE}
 Sys.setenv(LANG = "en")
 library(readr)  # to import tabular data (e.g. csv)
 library(tidyr)
@@ -30,6 +30,15 @@ library(jtools)
 library(leaflet)
 library(simplevis)
 
+library(tseries)
+library(ggfortify)
+library(changepoint)
+library(strucchange)
+library(feasts)
+library(forecast)
+library(CINNA)
+library(xts)
+
 
 knitr::opts_chunk$set(
   message = F,
@@ -45,7 +54,7 @@ RFolder      <- here::here()
 figureFolder <- here::here("figs") 
 ```
 
-```{r include=FALSE}
+```{r, include=FALSE}
 
 deer <- read_delim(file.path(dataFolder, "all_deer_complete.csv")) %>% data.frame()
 
@@ -144,8 +153,8 @@ ggplot()+
   theme_minimal() +
   coord_sf(datum = 2056)
 
-leaf_sf_col(deer_sf_LL, 
-               col_var = TierID)
+# leaf_sf_col(deer_sf_LL, 
+#                col_var = TierID)
 ```
 
 ### Geometry calculations
@@ -165,7 +174,6 @@ deer_quantiles_speed <- deer %>% group_by(TierID) %>% summarize(qua1 = quantile(
 
 deer <- deer %>% split(deer$TierID)
 
-#gruusig ich weiss, schlah mi jetzt nöd mit dene blöde r funktione ume sorry x)
 deer$RE01 <- deer$RE01[deer$RE01$speed >= deer_quantiles_speed$qua1[1] & 
                        deer$RE01$speed <= deer_quantiles_speed$qua2[1],]
 deer$RE02 <- deer$RE02[deer$RE02$speed >= deer_quantiles_speed$qua1[2] & 
@@ -204,8 +212,6 @@ deer_cleaned <- do.call(rbind, deer)
 deer_cleaned <- deer_cleaned %>% group_by(TierID) %>% mutate(
   timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')), #timelag is in minutes
   steplength = sqrt((y - lead(y,1))^2+ (x - lead(x,1))^2)) %>% mutate(speed = (steplength / timelag))
-
-
 ```
 
 
@@ -236,7 +242,6 @@ ggplot()+
   ggtitle("Monitoring timespan for 15 different roe deer")+
   ylab("Steplegth [m]")+
   xlab("Deer")
-
 ```
 
 ### Arealstatistik
@@ -277,6 +282,8 @@ ASTK_raster <- rasterize(dplyr::select(ASTK_bbox, E, N), empty_raster, ASTK_bbox
 # Adding arealstatistik values to deer data
 deer_cleaned <- data.frame(deer_cleaned)
 deer_cleaned <- deer_cleaned %>% mutate(astk = as.vector(extract(ASTK_raster, st_as_sf(deer_cleaned, coords = c("x", "y")) , 'simple')))
+
+deer_cleaned$astk[is.na(deer_cleaned$astk)] <- 0
 ```
 
 ```{r}
@@ -304,9 +311,9 @@ ggplot()+
 ### Methods
 ```{r}
 # Filte roe deer 1,2 and 3 and change coordinates to sf object
-deer_01 <- deer_cleaned %>% filter(TierID == "RE01")
-deer_02 <- deer_cleaned %>% filter(TierID == "RE02")
-deer_03 <- deer_cleaned %>% filter(TierID == "RE03")
+deer_01 <- deer_cleaned %>% filter(TierID == "RE01") %>% na.omit()
+deer_02 <- deer_cleaned %>% filter(TierID == "RE02") %>% na.omit()
+deer_03 <- deer_cleaned %>% filter(TierID == "RE03") %>% na.omit()
 
 deer1_3 <- rbind(deer_01, deer_02, deer_03)
 
@@ -316,7 +323,27 @@ deer_03_sf <- deer_01 %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FA
 
 ```
 
+```{r}
+#Overview over changepoints in speed for the roe deer
+CP_value01 = cpt.mean(deer_01$speed, method= "BinSeg") # Using method "binseg" cause it is quick but only approximate
+CP_value01
+cpts(CP_value01)
 
+plot(CP_value01,xlab="Date", ylab = "Speed [m/s]" ,main =" Change points in the speed of roe deer 1")
+
+CP_value02 = cpt.mean(deer_02$speed, method= "BinSeg") # Using method "binseg" cause it is quick but only approximate
+CP_value02
+cpts(CP_value02)
+
+plot(CP_value02,xlab="Date", ylab = "Speed [m/s]" ,main =" Change points in the speed of roe deer 2")
+
+CP_value03 = cpt.mean(deer_03$speed, method= "BinSeg") # Using method "binseg" cause it is quick but only approximate
+CP_value03
+cpts(CP_value03)
+
+plot(CP_value03,xlab="Date", ylab = "Speed [m/s]" ,main =" Change points in the speed of roe deer 3")
+```
+Surprisingly we do not set any changepoints in the speed values for the roe deer.
 
 ```{r}
 ### Forecasting speed 
@@ -330,7 +357,7 @@ speed_forcasting <- function(file){
 m.s= prophet(df = deer_mean_speed)
 
 future.s = make_future_dataframe(m = m.s, 
-                               periods = 1, 
+                               periods = 15, 
                                freq = "day")
 
 future.speed = stats::predict(m.s, future.s)
@@ -349,7 +376,6 @@ deer_01_s.f <- speed_forcasting(deer_01)
 deer_02_s.f <- speed_forcasting(deer_02)
 deer_03_s.f <- speed_forcasting(deer_03)
 ```
-
 ### Home range estimation
 ```{r}
 min_max <- function(file){ 
@@ -400,27 +426,36 @@ ggplot()+
 ```{r LM}
 # https://cran.r-project.org/web/packages/jtools/vignettes/effect_plot.html
 #Linear approach
-fit <- lm(speed ~ sex + timelag + x + y + steplength + DatetimeUTC + astk, data = deer)
-summ(fit)
+fit <- lm(speed ~ sex + timelag + x + y + steplength + astk + TierID, data = deer_cleaned)
 
-effect_plot(fit, pred = astk, interval = TRUE, rug = TRUE)
-effect_plot(fit, pred = astk, interval = TRUE, plot.points = TRUE)
+#predicts the future values
+s.astk.model <- lm(speed~astk,data = deer_cleaned)
+variable_astk <-data.frame(astk=c(deer_cleaned$astk))
+p1 <- predict(s.astk.model, newdata = variable_astk)
+p2 <- predict(s.astk.model, newdata = variable_astk,interval = 'confidence')
 
 
-fit_poly <- lm(cty ~ poly(displ, 2) + year + cyl + class + fl, data = mpg)
-effect_plot(fit_poly, pred = displ, interval = TRUE, plot.points = TRUE)
-```
-
-```{r}
+effect_plot(s.astk.model, pred = astk, interval = TRUE, plot.points = TRUE)
 
 ```
 
 ## Results
 ```{r}
+summ(fit)
+effect_plot(fit, pred = astk, interval = TRUE, plot.points = TRUE)
 
+fit_poly <- lm(speed ~ sex + timelag + x + y + steplength + poly(astk, 2) + TierID, data = deer_cleaned)
+effect_plot(fit_poly, pred = astk, interval = TRUE, plot.points = TRUE)
+
+
+effect_plot(fit, pred = astk, interval = TRUE, plot.points = TRUE,
+            jitter = .2)
+
+summ(s.astk.model)
+
+plot(p1)
+plot(p2)
 ```
-
-
 ## Discussion
 
 
