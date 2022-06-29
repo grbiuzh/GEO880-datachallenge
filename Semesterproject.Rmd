@@ -4,10 +4,13 @@ subtitle: "Data challenge :GEO880, Patterns and Trends in Environmental Data - C
 author: "Tim Fässler and Gregory Biland"
 date: "30/05/2022"
 output:
-  prettydoc::html_pretty:
-    theme: cayman
-    highlight: github
-    math: katex
+  html_document:
+    theme: spacelab
+    highlight: monochrome
+    toc: true
+    toc_float: true
+    number_sections: true
+    text-align: justify
 ---
 
 ```{r, echo = FALSE}
@@ -68,25 +71,30 @@ ASTK_ZH <- read_delim(file.path(dataFolder, "ASTK_ZH.csv"))
 # ASTK <- read_delim(file.path(dataFolder, "Arealstatistik.csv"))
 ```
 
-## Abstract  {.tabset}
+<div class=text-justify>
+
+# Abstract  {.tabset}
 Animal movement has always been a complex field of study as it consists of and compiles the difficulties of ecology, geography and data science. This project seeks to merge these three disciplines as it tries to predict the future movement of Roe Deer through space with the usage of an linear model with constraints set up by typical biological behaviours of the Roe Deer.
 
-## Background and research goals  {.tabset}
-- What parameters are crucial for modeling and predicting deer movement patterns using an artificial neural network (ANN), and how much does the deers gender influence these models?
+# Background and research goals  {.tabset}
 
-- Does the artificial neural network differentiate significantly between the deers movement in different kind of landscape spaces, for example forest vs on an open grass field.
+With the continuous compaction of the soil and the ongoing sealing of the ground, the habitat of native species in Switzerland is increasingly under pressure [reference]. To counteract this pressure, it has become essential to sustainably protect animal habitats and thus preserve the diverse biodiversity. For this to be possible, it is important to know where the animals move, but also where possible areas are in which they may reside. This prediction of the habitats is the content of this work based on the GPS data of 15 tracked red deer in Zurich. Using GPS data from 15 deer in the south of the canton of Zurich, we evaluate their individual movement paths of three animals and, using a time model, try to predict the speed at which the animals will travel 24 hours from the last measurement point and thus determine the maximum distance the animals will travel. In order to be able to control how much the ground sourcing affects this prediction, a linear model was created to investigate the relationship between the area statistics and the speed.
 
-## Methods and data  {.tabset}
+Our research questions are:
 
-### Data
+- RQ.1: Using velocity, how accurately can movements in the future be modeled using a predictive time model?
+
+- RQ.2: What parameters are crucial for modeling and predicting deer movement ranges using a linear predictive model (LM), and how much does the "Arealstatistik" influence this model?
+
+# Methods and data  {.tabset}
+
+## Data
+
 ```{r}
-#To test make subset of df
-# deer <- subset(deer[1:100,])
-
 head(deer)
 ```
 
-### Preprocessing
+## Preprocessing
 ```{r}
 #deer <- deer %>% group_by(reh) %>% mutate(Name = randomNames(reh, ethnicity = 4)) #Give deer names
 canton_zh <- canton_zh %>% subset(KANTON == "Zürich")
@@ -161,7 +169,8 @@ ggplot()+
 #                col_var = TierID)
 ```
 
-### Geometry calculations
+## Geometry calculations 
+
 ```{r}
 deer <- deer %>% group_by(TierID) %>% mutate(
   timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')), #timelag is in seconds
@@ -171,7 +180,8 @@ deer <- deer %>% mutate(speed = (steplength / timelag)) #speed is in meter per m
 deer <- deer %>% drop_na() %>% data.frame() %>% subset(select= -c(longitude, latitude) )
 ```
 
-### Outlier Handling
+## Outlier Handling
+
 ```{r}
 
 deer_quantiles_speed <- deer %>% group_by(TierID) %>% summarize(qua1 = quantile(speed, 0.01, na.rm = TRUE), qua2 = quantile(speed, 0.99, na.rm = TRUE))
@@ -252,7 +262,7 @@ ggplot()+
   xlab("Deer")
 ```
 
-### Arealstatistik
+## Arealstatistik
 
 ```{r}
 
@@ -318,7 +328,7 @@ ggplot()+
   ggtitle("Tracking points for roe deer with the Arealstatistik")
 ```
 
-### Methods
+## Methods
 
 ```{r}
 # Filte roe deer 1,2 and 3 and change coordinates to sf object
@@ -388,7 +398,7 @@ deer_01_s.f <- speed_forcasting(deer_01)
 deer_02_s.f <- speed_forcasting(deer_02)
 deer_03_s.f <- speed_forcasting(deer_03)
 ```
-### Home range estimation
+## Home range estimation
 
 ```{r}
 min_max <- function(file){ 
@@ -436,7 +446,7 @@ ggplot()+
   coord_sf(datum = 2056)
 ```
 
-### Linear predictive model
+## Linear predictive model
 
 ```{r LM}
 # https://cran.r-project.org/web/packages/jtools/vignettes/effect_plot.html
@@ -475,7 +485,7 @@ predict_model_speed$row_num <- seq.int(nrow(predict_model_speed))
 deer_cleaned$row_num <- seq.int(nrow(deer_cleaned)) 
 ```
 
-## Results    {.tabset}
+# Results    {.tabset}
 
 ```{r}
 #Summary
@@ -533,7 +543,9 @@ print(model)
 plot(model)
 ```
 
-## Discussion    {.tabset}
+# Discussion    {.tabset}
 
 
-## Bibliography    {.tabset}
+<div>
+
+# Bibliography
