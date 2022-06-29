@@ -1,5 +1,5 @@
 ---
-title: "Forecasting coordinates from movement trajectories in Roe Deer"
+title: "Forecasting future movement from speed trajectories in Roe Deer using a linear predictive model"
 subtitle: "Data challenge :GEO880, Patterns and Trends in Environmental Data - Computational Movement Analysis"
 author: "Tim Fässler and Gregory Biland"
 date: "30/05/2022"
