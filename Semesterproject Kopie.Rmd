@@ -29,6 +29,7 @@ library(MASS)
 library(jtools)
 library(leaflet)
 library(simplevis)
+library(trajr)
 
 library(tseries)
 library(ggfortify)
@@ -38,6 +39,8 @@ library(feasts)
 library(forecast)
 library(CINNA)
 library(xts)
+library(moveHMM)
+library(amt)
 
 
 knitr::opts_chunk$set(
@@ -208,10 +211,19 @@ deer$RE015 <- deer$RE015[deer$RE015$speed >= deer_quantiles_speed$qua1[15] &
 deer_cleaned <- do.call(rbind, deer)
 
 # Recalculating timelag, steplength and speed
-
 deer_cleaned <- deer_cleaned %>% group_by(TierID) %>% mutate(
   timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')), #timelag is in minutes
   steplength = sqrt((y - lead(y,1))^2+ (x - lead(x,1))^2)) %>% mutate(speed = (steplength / timelag))
+
+# Calculating additional attribute
+colnames(deer_cleaned)[3] <- "ID"
+deer_cleaned <- prepData(deer_cleaned, type = "UTM", ) %>% 
+  data.frame() %>% 
+  subset(select = -step) %>% 
+  relocate(angle, .after = speed) %>%
+  rename(TierID = ID) %>%
+  relocate(TierID, .before = sex)
+
 ```
 
 
@@ -256,8 +268,6 @@ bbox_sf <- bbox_sf %>%
   st_cast("POLYGON")
 bbox_sf <- bbox_sf %>% st_transform(2056)
 
-
-
 # Extracting the relevant cells of the Arealstatistik
 ASTK_ZH <- ASTK_ZH %>% st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE)
 ASTK_bbox <- st_join(bbox_sf, ASTK_ZH, join = st_contains_properly, left=TRUE)
@@ -283,11 +293,17 @@ ASTK_raster <- rasterize(dplyr::select(ASTK_bbox, E, N), empty_raster, ASTK_bbox
 deer_cleaned <- data.frame(deer_cleaned)
 deer_cleaned <- deer_cleaned %>% mutate(astk = as.vector(extract(ASTK_raster, st_as_sf(deer_cleaned, coords = c("x", "y")) , 'simple')))
 
+# Adding the description of the classification
+ASTK_desc <- read_delim(file.path(dataFolder, "Arealstatistik_Dokumentation.csv"))
+deer_cleaned <- merge(x = deer_cleaned, y = ASTK_desc, by.x = "astk", by.y = "CODE", all.x = TRUE)
+deer_cleaned <- deer_cleaned %>% relocate(astk, .before = LABEL_DE)
+
 deer_cleaned$astk[is.na(deer_cleaned$astk)] <- 0
 ```
 
 ```{r}
 raster_vis <- as.data.frame(ASTK_raster, xy = TRUE)
+raster_vis <- merge(x = raster_vis, y = ASTK_desc, by.x = "layer", by.y = "CODE", all.x = TRUE)
 
 ggplot()+
   # geom_sf(data = canton_zh, fill = alpha("white", .1))+
@@ -306,6 +322,14 @@ ggplot()+
   geom_path(data = deer_cleaned, aes(x = x, y = y), alpha = 0.3)+
   theme_minimal()+
   ggtitle("Tracking points for roe deer with the Arealstatistik")
+
+ggplot()+
+  geom_sf(data = bbox_sf)+
+  geom_raster(data = raster_vis, aes(x = x, y = y, alpha = LABEL_DE))+
+  coord_sf(datum = 2056)+
+  theme_minimal()+
+  ggtitle("Tracking points for roe deer")
+
 ```
 
 ### Methods
