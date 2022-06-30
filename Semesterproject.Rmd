@@ -1,18 +1,25 @@
 ---
-title: "Prediction of future movement in Roe Deer"
+title: "Forecasting future movement from speed trajectories in Roe Deer using a linear predictive model"
 subtitle: "Data challenge :GEO880, Patterns and Trends in Environmental Data - Computational Movement Analysis"
 author: "Tim Fässler and Gregory Biland"
 date: "30/05/2022"
 output:
-  html_document
+  html_document:
+    theme: spacelab
+    highlight: monochrome
+    toc: true
+    toc_float: true
+    number_sections: true
+    text-align: justify
 ---
 
-```{r setup, include=FALSE}
+```{r, echo = FALSE}
 library(knitr)
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
-```
+``` 
 
-```{r message=FALSE, warning=FALSE, =FALSE, include=FALSE}
+
+```{r, message=FALSE, warning=FALSE,, include=FALSE}
 Sys.setenv(LANG = "en")
 library(readr)  # to import tabular data (e.g. csv)
 library(tidyr)
@@ -21,15 +28,25 @@ library(dplyr)        # to manipulate (tabular) data
 library(sf)           # to handle spatial vector data
 library(lubridate)    # To handle dates and times
 library(ggplot2)
-library(randomNames)
 library(caTools)
 library(caret)
-library(neuralnet)
-library(trajr)
 library(raster)
-library(h2o)
+library(prophet)
+library(MASS)
+library(jtools)
+library(leaflet)
+library(simplevis)
 
-h2o.init()
+library(tseries)
+library(ggfortify)
+library(changepoint)
+library(strucchange)
+library(feasts)
+library(forecast)
+library(CINNA)
+library(xts)
+library(class)
+library(caret)
 
 knitr::opts_chunk$set(
   message = F,
@@ -45,36 +62,39 @@ RFolder      <- here::here()
 figureFolder <- here::here("figs") 
 ```
 
-```{r include=FALSE}
+```{r, include=FALSE}
 
 deer <- read_delim(file.path(dataFolder, "all_deer_complete.csv")) %>% data.frame()
-# deer <- h2o.importFile(file.path(dataFolder, "all_deer_complete.csv")) #https://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/deep-learning.html
 
 canton_zh <- st_read(file.path(dataFolder,"Gemeindegrenzen_-OGD/UP_KANTON_F.shp"))
 ASTK_ZH <- read_delim(file.path(dataFolder, "ASTK_ZH.csv"))
 # ASTK <- read_delim(file.path(dataFolder, "Arealstatistik.csv"))
 ```
 
-## Abstract
-Animal movement has always been a complex field of study as it consists of and compiles the difficulties of ecology, geography and data science. This project seeks to merge these three disciplines as it tries to predict the future movement of Roe Deer through space with the usage of an aritificical neural network with constraints set up by typical biological behaviours of the Roe Deer.
+<div class=text-justify>
 
-## Background and research goals
-- What parameters are crucial for modeling and predicting deer movement patterns using an artificial neural network (ANN), and how much does the deers gender influence these models?
+# Abstract  {.tabset}
+Animal movement has always been a complex field of study as it consists of and compiles the difficulties of ecology, geography and data science. This project seeks to merge these three disciplines as it tries to predict the future movement of Roe Deer through space with the usage of an linear model with constraints set up by typical biological behaviours of the Roe Deer.
 
-- Does the articifical neural network differentiate significantly between the deers movement in different kind of landscape spaces, for example forest vs on an open grass field.
+# Background and research goals  {.tabset}
 
-## Methods and data
+With the continuous compaction of the soil and the ongoing sealing of the ground, the habitat of native species in Switzerland is increasingly under pressure [reference]. To counteract this pressure, it has become essential to sustainably protect animal habitats and thus preserve the diverse biodiversity. For this to be possible, it is important to know where the animals move, but also where possible areas are in which they may reside. This prediction of the habitats is the content of this work based on the GPS data of 15 tracked red deer in Zurich. Using GPS data from 15 deer in the south of the canton of Zurich, we evaluate their individual movement paths of three animals and, using a time model, try to predict the speed at which the animals will travel 24 hours from the last measurement point and thus determine the maximum distance the animals will travel. In order to be able to control how much the ground sourcing affects this prediction, a linear model was created to investigate the relationship between the area statistics and the speed.
 
-### Data
+Our research questions are:
+
+- RQ.1: Using velocity, how accurately can movements in the future be modeled using a predictive time model?
+
+- RQ.2: What parameters are crucial for modeling and predicting deer movement ranges using a linear predictive model (LM), and how much does the "Arealstatistik" influence this model?
+
+# Methods and data  {.tabset}
+
+## Data
+
 ```{r}
-#To test make subset of df
-deer <- subset(deer[1:100,])
-
 head(deer)
 ```
 
-### Preprocessing
-
+## Preprocessing
 ```{r}
 #deer <- deer %>% group_by(reh) %>% mutate(Name = randomNames(reh, ethnicity = 4)) #Give deer names
 canton_zh <- canton_zh %>% subset(KANTON == "Zürich")
@@ -90,14 +110,15 @@ deer$sex[deer$sex == "m"] <- as.numeric(0)
 deer$sex[deer$sex == "f"] <- as.numeric(1)
 
 deer <- deer %>% rename(TierID = reh, DatetimeUTC = datetime_utc)
+colnames(deer)[c(3,4)] <- c("x","y")
 
 deer <- deer %>% mutate(
-  y = y + 2000000,
-  x = x + 1000000
+  x = x + 2000000,
+  y = y + 1000000
 )
 
 # Making a bounding box of the relevant study area
-deer <- deer %>% st_as_sf(coords = c("y", "x"), crs = 2056, remove = FALSE) 
+deer <- deer %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FALSE) 
 bbox <- st_make_grid(st_bbox(deer), n = 1)
 bbox_df <- bbox[[1]][[1]] %>% data.frame()
 deer <- deer %>% st_drop_geometry()
@@ -114,67 +135,147 @@ bbox_df$X2[2] = bbox_df$X2[2] - 1000
 bbox_df$X2[3] = bbox_df$X2[3] + 1000
 bbox_df$X2[4] = bbox_df$X2[4] + 1000
 bbox_df$X2[5] = bbox_df$X2[5] - 1000
-bbox_sf <- bbox_df %>% st_as_sf(coords = c('X1', 'X2'), crs = 2056) %>% 
+bbox_sf <- bbox_df %>% st_as_sf(coords = c('X1', 'X2'), crs = 2056)
+
+bbox_sf <- bbox_sf %>% 
   summarise(geometry = st_combine(geometry)) %>%
   st_cast("POLYGON")
 
+bbox_sf <- bbox_sf %>% st_transform(2056)
+
 ```
 
-#Rename deer as numeric 
 ```{r}
-deer <- deer %>%
-    mutate(TierID = recode(TierID, RE01 = 1))
+#Rename deer as numeric and remove long lat
+deer <- deer %>% mutate(sex = as.numeric(sex))
+
 ```
 
+```{r}
+#Plot data for overview
+deer_sf_LL <- deer %>% st_as_sf(coords = c("longitude", "latitude"), crs = 2056, remove = FALSE)
+deer_sf <- deer %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FALSE)
+ggplot()+
+  geom_sf(data=bbox_sf, alpha=.1)+
+  geom_path(data = deer,aes(x,y,  col = TierID))+
+  geom_point(data = deer,aes(x,y, col = TierID))+
+  ggtitle("Movement patterns for 15 different roe deer with the bounding box for \nthe observation field around")+
+  xlab("X")+
+  ylab("Y")+
+  theme_minimal() +
+  coord_sf(datum = 2056)
 
-### Geometry calculations
+# leaf_sf_col(deer_sf_LL, 
+#                col_var = TierID)
+```
+
+## Geometry calculations 
 
 ```{r}
 deer <- deer %>% group_by(TierID) %>% mutate(
-  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')), #timelag is in minutes
+  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')), #timelag is in seconds
   steplength = sqrt((y - lead(y,1))^2+ (x - lead(x,1))^2))
 
-deer <- deer %>% mutate(speed = (steplength / timelag)) #km/h -> Aber falsch da steplength nicht immer gleich lang ist --> sött doch eigentlich scho stimme wil ja steplength und timelag beidi grösser werded, glicht sich us, m/s macht glaub au meh sinn solang mer mit koordinate schaffed wo in meter sind und das trajr package au immer mit m/s schaffed 
+deer <- deer %>% mutate(speed = (steplength / timelag)) #speed is in meter per minute
 deer <- deer %>% drop_na() %>% data.frame() %>% subset(select= -c(longitude, latitude) )
-deer$sex <- as.numeric(as.character(deer$sex))
-
-deer <- TrajFromCoords(deer, timeCol = 'DatetimeUTC') 
-deer <- deer %>% mutate(displacementTime = as.integer(displacementTime))
-
-# Measures of speed
-derivs <- TrajDerivatives(deer)
-
-deer <- deer %>% 
-  mutate(
-  mean_speed = mean(derivs$speed),
-  sd_speed = sd(derivs$speed),
-  sinuosity = TrajSinuosity(deer), 
-  Emax = TrajEmax(TrajRediscretize(deer, .001)), # funktioniert das überhaupt mit dem rediscretize ide funktion? müsstmer denn nöd grad sganze trajectory file, dasmer überall de gliche resamplete steptime hend?
-  min_deltaS = TrajDAFindFirstMinimum(TrajDirectionAutocorrelations(TrajRediscretize(deer, .001), 1))[1],
-  min_C = TrajDAFindFirstMinimum(TrajDirectionAutocorrelations(TrajRediscretize(deer, .001), 1))[2]
-)
-
-#assign new columns for predicted values
-
-# Next x (nx): x coordinate at next moment
-# Next y (ny): y coordinate at next moment
-# dx: delta X = nx — x
-# dy: delta Y = ny — y
-
-deer <- deer %>%
-  add_column(FutLat= "",
-             FutLon= "") 
-
-deer$FutLon <- NA
-deer$FutLat <- NA
-
-deer$FutLon <- as.numeric(as.character(deer$FutLon))
-deer$FutLat <- as.numeric(as.character(deer$FutLat))
-
 ```
-### Arealstatistik
+
+## Outlier Handling
 
 ```{r}
+
+deer_quantiles_speed <- deer %>% group_by(TierID) %>% summarize(qua1 = quantile(speed, 0.01, na.rm = TRUE), qua2 = quantile(speed, 0.99, na.rm = TRUE))
+
+deer <- deer %>% split(deer$TierID)
+
+deer$RE01 <- deer$RE01[deer$RE01$speed >= deer_quantiles_speed$qua1[1] & 
+                       deer$RE01$speed <= deer_quantiles_speed$qua2[1],]
+deer$RE02 <- deer$RE02[deer$RE02$speed >= deer_quantiles_speed$qua1[2] & 
+                       deer$RE02$speed <= deer_quantiles_speed$qua2[2],]
+deer$RE03 <- deer$RE03[deer$RE03$speed >= deer_quantiles_speed$qua1[3] & 
+                       deer$RE03$speed <= deer_quantiles_speed$qua2[3],]
+deer$RE04 <- deer$RE04[deer$RE04$speed >= deer_quantiles_speed$qua1[4] & 
+                       deer$RE04$speed <= deer_quantiles_speed$qua2[4],]
+deer$RE05 <- deer$RE05[deer$RE05$speed >= deer_quantiles_speed$qua1[5] & 
+                       deer$RE05$speed <= deer_quantiles_speed$qua2[5],]
+deer$RE06 <- deer$RE06[deer$RE06$speed >= deer_quantiles_speed$qua1[6] & 
+                       deer$RE06$speed <= deer_quantiles_speed$qua2[6],]
+deer$RE07 <- deer$RE07[deer$RE07$speed >= deer_quantiles_speed$qua1[7] & 
+                       deer$RE07$speed <= deer_quantiles_speed$qua2[7],]
+deer$RE08 <- deer$RE08[deer$RE08$speed >= deer_quantiles_speed$qua1[8] & 
+                       deer$RE08$speed <= deer_quantiles_speed$qua2[8],]
+deer$RE09 <- deer$RE09[deer$RE09$speed >= deer_quantiles_speed$qua1[9] & 
+                       deer$RE09$speed <= deer_quantiles_speed$qua2[9],]
+deer$RE010 <- deer$RE010[deer$RE010$speed >= deer_quantiles_speed$qua1[10] & 
+                       deer$RE010$speed <= deer_quantiles_speed$qua2[10],]
+deer$RE011 <- deer$RE011[deer$RE011$speed >= deer_quantiles_speed$qua1[11] & 
+                       deer$RE011$speed <= deer_quantiles_speed$qua2[11],]
+deer$RE012 <- deer$RE012[deer$RE012$speed >= deer_quantiles_speed$qua1[12] & 
+                       deer$RE012$speed <= deer_quantiles_speed$qua2[12],]
+deer$RE013 <- deer$RE013[deer$RE013$speed >= deer_quantiles_speed$qua1[13] & 
+                       deer$RE013$speed <= deer_quantiles_speed$qua2[13],]
+deer$RE014 <- deer$RE014[deer$RE014$speed >= deer_quantiles_speed$qua1[14] & 
+                       deer$RE014$speed <= deer_quantiles_speed$qua2[14],]
+deer$RE015 <- deer$RE015[deer$RE015$speed >= deer_quantiles_speed$qua1[15] & 
+                       deer$RE015$speed <= deer_quantiles_speed$qua2[15],]
+
+deer_cleaned <- do.call(rbind, deer)
+
+# Recalculating timelag, steplength and speed
+
+deer_cleaned <- deer_cleaned %>% group_by(TierID) %>% mutate(
+  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')), #timelag is in minutes
+  steplength = sqrt((y - lead(y,1))^2+ (x - lead(x,1))^2)) %>% mutate(speed = (steplength / timelag))
+```
+
+
+```{r}
+# So wärs mit 0.01 und 0.99 percentil removed, chönd au no meh filtere
+ggplot()+
+  geom_sf(data=bbox_sf, alpha=.1)+
+  geom_path(data = deer_cleaned,aes(x,y,  col = TierID))+
+  geom_point(data = deer_cleaned,aes(x,y, col = TierID))+
+  ggtitle("Movement patterns for 15 different roe deer with the bounding box for the observation field around")+
+  xlab("X")+
+  ylab("Y")+
+  theme_minimal() +
+  coord_sf(datum = 2056)
+```
+
+```{r}
+ggplot()+
+  geom_line(data = deer_cleaned, aes(x=DatetimeUTC, y = speed, col= TierID))+
+  ggtitle("Monitoring timespan for 15 different roe deer")+
+  ylab("Speed [m/s]")+
+  xlab("Deer")
+
+ggplot()+
+  geom_line(data = deer_cleaned, aes(x=DatetimeUTC, y = steplength, col= TierID))+
+  ggtitle("Monitoring timespan for 15 different roe deer")+
+  ylab("Steplegth [m]")+
+  xlab("Deer")
+
+ggplot()+
+  geom_line(data = deer_cleaned, aes(x=DatetimeUTC, y = timelag, col= TierID))+
+  ggtitle("Monitoring timespan for 15 different roe deer")+
+  ylab("Steplegth [m]")+
+  xlab("Deer")
+```
+
+## Arealstatistik
+
+```{r}
+
+# Updating bounding box
+bbox_df$X2[c(1,2,5)] <- min(deer_cleaned$y) - 1000
+
+bbox_sf <- bbox_df %>% st_as_sf(coords = c('X1', 'X2'), crs = 2056)
+bbox_sf <- bbox_sf %>% 
+  summarise(geometry = st_combine(geometry)) %>%
+  st_cast("POLYGON")
+bbox_sf <- bbox_sf %>% st_transform(2056)
+
+
 
 # Extracting the relevant cells of the Arealstatistik
 ASTK_ZH <- ASTK_ZH %>% st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE)
@@ -198,99 +299,253 @@ empty_raster <- raster(
 ASTK_raster <- rasterize(dplyr::select(ASTK_bbox, E, N), empty_raster, ASTK_bbox$AS18_72) 
 
 # Adding arealstatistik values to deer data
-deer <- data.frame(deer)
-deer$astk <- as.vector(extract(ASTK_raster, st_as_sf(deer, coords = c("x", "y")) , 'simple'))
+deer_cleaned <- data.frame(deer_cleaned)
+deer_cleaned <- deer_cleaned %>% mutate(astk = as.vector(extract(ASTK_raster, st_as_sf(deer_cleaned, coords = c("x", "y")) , 'simple')))
 
-
+deer_cleaned$astk[is.na(deer_cleaned$astk)] <- 0
+deer_cleaned <- deer_cleaned %>% na.omit()
 ```
 
 ```{r}
-deer <- deer %>% st_as_sf(coords = c("y", "x"), crs = 2056, remove = FALSE)
 raster_vis <- as.data.frame(ASTK_raster, xy = TRUE)
-
-ggplot()+
-  geom_line(data = deer, aes(x=time, y = speed, col= TierID))+
-  ggtitle("Monitoring timespan for 15 different roe deer")+
-  ylab("Deer")+
-  xlab("speed")
 
 ggplot()+
   # geom_sf(data = canton_zh, fill = alpha("white", .1))+
   geom_sf(data = bbox_sf)+
   geom_raster(data = raster_vis, aes(x = x, y = y, alpha = layer))+
-  geom_path(data = deer, aes(x = x, y = y, col = TierID), alpha = 0.3)+
-  geom_point(data = deer, aes(x = x, y = y, col = TierID), size = .1)+
+  geom_path(data = deer_cleaned, aes(x = x, y = y, col = TierID), alpha = 0.3)+
+  geom_point(data = deer_cleaned, aes(x = x, y = y, col = TierID), size = .1)+
   coord_sf(datum = 2056)+
   theme_minimal()+
   ggtitle("Tracking points for roe deer")
   
-
 ggplot()+
   geom_raster(data = raster_vis, aes(x = x, y = y, alpha = layer))+
-  coord_sf(datum =2056)+
-  geom_point(data = deer, aes(x,y, color = as.factor(astk)))+
-  geom_path(data = deer, aes(x = x, y = y), alpha = 0.3)+
   coord_sf(datum = 2056)+
+  geom_point(data = deer_cleaned, aes(x,y, color = as.factor(astk)))+
+  geom_path(data = deer_cleaned, aes(x = x, y = y), alpha = 0.3)+
   theme_minimal()+
   ggtitle("Tracking points for roe deer with the Arealstatistik")
-
-
-deer <- deer %>% st_drop_geometry()
-
 ```
 
-### Methods
+## Methods
 
-```{r Test and Trainigdata}
-#Create training and test data with 80/20% ratio
-set.seed(54)
+```{r}
+# Filte roe deer 1,2 and 3 and change coordinates to sf object
+deer_01 <- deer_cleaned %>% filter(TierID == "RE01") %>% na.omit()
+deer_02 <- deer_cleaned %>% filter(TierID == "RE02") %>% na.omit()
+deer_03 <- deer_cleaned %>% filter(TierID == "RE03") %>% na.omit()
 
-sample <- sample.int(n = nrow(deer), size = floor(0.8*nrow(deer)), replace = F)
-trainingset <- deer[sample, ]
-testset  <- deer[-sample, ]
+deer1_3 <- rbind(deer_01, deer_02, deer_03)
 
-trainingset <- dplyr::select(trainingset, -c(time, polar, displacement, FutLat, FutLon))
-
-trainingset_h2o <- trainingset %>% as.h2o()
-
-testset <- dplyr::select(testset, -c(time, polar, displacement, FutLat, FutLon))
-
-testset_h2o <- testset %>% as.h2o()
-```
-
-### Artificial neural network 
-```{r ANN}
-set.seed(54)
-
-# Second ANN method
-model1 = neuralnet(x ~ y + sex + timelag + speed + steplength + displacementTime ,data=trainingset, hidden=79, act.fct = "logistic", 
-                linear.output = FALSE, stepmax = 1000, rep = 100)
-
-model2 = neuralnet(y ~ x + sex + timelag + speed + steplength + displacementTime ,data=trainingset, hidden=79, act.fct = "logistic", linear.output = FALSE, stepmax = 1000, rep = 100)
-
-## Prediction using neural network
-Predict_x=compute(model1, testset)
-Predict_y=compute(model2, testset)
-
-Predict_x$net.result
-Predict_y$net.result
-
-
-model_h2o = h2o.deeplearning(x = c(y, sex, timelag, speed, steplength, displacementTime), y = x, training_frame = trainingset_h2o, validation_frame = testset_h2o, activation = "Rectifier", hidden = rep(150,3), epochs = 1000)
+deer_01_sf <- deer_01 %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FALSE)
+deer_02_sf <- deer_01 %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FALSE)
+deer_03_sf <- deer_01 %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FALSE)
 
 ```
 
 ```{r}
+#Overview over changepoints in speed for the roe deer
+CP_value01 = cpt.mean(deer_01$speed, method= "BinSeg") # Using method "binseg" cause it is quick but only approximate
+CP_value01
+cpts(CP_value01)
 
+plot(CP_value01,xlab="Date", ylab = "Speed [m/s]" ,main =" Change points in the speed of roe deer 1")
+
+CP_value02 = cpt.mean(deer_02$speed, method= "BinSeg") # Using method "binseg" cause it is quick but only approximate
+CP_value02
+cpts(CP_value02)
+
+plot(CP_value02,xlab="Date", ylab = "Speed [m/s]" ,main =" Change points in the speed of roe deer 2")
+
+CP_value03 = cpt.mean(deer_03$speed, method= "BinSeg") # Using method "binseg" cause it is quick but only approximate
+CP_value03
+cpts(CP_value03)
+
+plot(CP_value03,xlab="Date", ylab = "Speed [m/s]" ,main =" Change points in the speed of roe deer 3")
 ```
 
-## Results
+Surprisingly we do not set any changepoints in the speed values for the roe deer.
+
 ```{r}
+### Forecasting speed 
+speed_forcasting <- function(file){
+  deer_mean_speed = file %>% 
+  group_by(DatetimeUTC) %>% 
+  summarise(speed = mean(speed, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  rename(ds = DatetimeUTC, y = speed)
+
+m.s= prophet(df = deer_mean_speed)
+
+future.s = make_future_dataframe(m = m.s, 
+                               periods = 15, 
+                               freq = "day")
+
+future.speed = stats::predict(m.s, future.s)
+
+print(plot(m.s,future.speed) +
+  theme_bw()+
+  theme(axis.text = element_text(size = 12), axis.title = element_text(size = 14))+
+  labs(x = NULL, y = expression(Roe~deer~speed~(m/s))))
+
+dyplot.prophet(x = m.s, fcst = future.speed,uncertainty = TRUE )
+
+prophet_plot_components(m = m.s, fcst = future.speed)
+}
+
+deer_01_s.f <- speed_forcasting(deer_01)
+deer_02_s.f <- speed_forcasting(deer_02)
+deer_03_s.f <- speed_forcasting(deer_03)
+```
+## Home range estimation
+
+```{r}
+min_max <- function(file){ 
+  min_speed = tail(file[[1]][["data"]][["trend_lower"]], n = 1) 
+  max_speed = tail(file[[1]][["data"]][["trend_upper"]], n = 1)
+  min_distance = (min_speed * 86400)
+  max_distance = (max_speed * 86400)
+  df <- data.frame (min_HR = min_speed,
+                    max_HR = max_speed,
+                    min_distance = min_distance,
+                    max_distance = max_distance)
+}
+
+deer01_HR <- min_max(deer_01_s.f)
+deer02_HR <- min_max(deer_02_s.f)
+deer03_HR <- min_max(deer_03_s.f)
+
+#Home range distance definition
+homerange <- function(file, f1){
+  last_point_x = last(file$x)
+  last_point_y = last(file$y)
+  
+  buffer_point <- data.frame(x = last_point_x, y = last_point_y)
+  buffer_point <- buffer_point %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FALSE)
+  
+  min_buffer = buffer_point %>% st_buffer(dist= f1$min_distance)
+  max_buffer = buffer_point %>% st_buffer(dist= f1$max_distance)
+  rbind(min_buffer, max_buffer)
+}
+
+homerange_deer1 <- homerange(deer_01, deer01_HR)
+homerange_deer2 <- homerange(deer_02, deer02_HR)
+homerange_deer3 <- homerange(deer_03, deer03_HR)
+
+ggplot()+
+  geom_path(data = deer1_3, aes(x,y, col = TierID))+
+  geom_point(data = deer1_3, aes(x,y, col = TierID))+
+  geom_sf(data = homerange_deer1, col = "red", alpha = .1)+
+  geom_sf(data = homerange_deer2, col = "darkgreen", alpha = .1)+
+  geom_sf(data = homerange_deer3, col = "blue", alpha = .1)+
+  ggtitle("Predicted homerange for Roe deer 1,2 and 3 in the next 24 hours \nwith the minimum and maximum distance")+
+  xlab("X")+
+  ylab("Y")+
+  theme_minimal()+
+  coord_sf(datum = 2056)
+```
+
+## Linear predictive model
+
+```{r LM}
+# https://cran.r-project.org/web/packages/jtools/vignettes/effect_plot.html
+#Linear approach
+fit <- lm(speed ~ sex + timelag + x + y + steplength + astk + TierID, data = deer_cleaned)
+fit_poly.astk <- lm(speed ~ sex + timelag + x + y + steplength + poly(astk, 2) + TierID, data = deer_cleaned)
+fit_poly.sex <- lm(speed ~ poly(sex, 1) + timelag + x + y + steplength + astk + TierID, data = deer_cleaned)
+
+#predicts the future values
+s.astk.model <- lm(speed~astk,data = deer_cleaned)
+s.sex.model <- lm(speed~sex,data = deer_cleaned)
+
+variable_astk <-data.frame(astk=c(deer_cleaned$astk))
+p1_astk <- predict(s.astk.model, newdata = variable_astk)
+p2_astk <- predict(s.astk.model, newdata = variable_astk,interval = 'confidence')
+
+variable_sex <-data.frame(sex=c(deer_cleaned$sex))
+p1_sex <- predict(s.sex.model, newdata = variable_sex)
+p2_sex <- predict(s.sex.model, newdata = variable_sex,interval = 'confidence')
+
+# KNN- algorithm approach with prediction of speed
+# Define training control
+set.seed(54)
+
+train.control <- trainControl(method = "cv", number = 10)
+
+# Train the model
+model <- train(speed ~ sex + timelag + x + y + steplength + astk
+               , data = deer_cleaned
+               , trControl = train.control, method = "knn")
+
+# Summarize the results
+predict_model_speed <- predict(model)
+predict_model_speed <- predict_model_speed %>% data.frame()
+predict_model_speed$row_num <- seq.int(nrow(predict_model_speed)) 
+deer_cleaned$row_num <- seq.int(nrow(deer_cleaned)) 
+```
+
+# Results    {.tabset}
+
+```{r}
+#Summary
+summ(fit)
+summ(s.astk.model)
+summ(s.sex.model)
+
+autoplot(fit)
+autoplot(fit_poly.astk)
+autoplot(fit_poly.sex)
+
+effect_plot(fit, pred = astk, interval = TRUE, plot.points = TRUE)
+effect_plot(fit, pred = sex, interval = TRUE, plot.points = TRUE)
+effect_plot(s.astk.model, pred = astk, interval = TRUE, plot.points = TRUE)
+effect_plot(s.sex.model, pred = sex, interval = TRUE, plot.points = TRUE)
+
+effect_plot(fit_poly.astk, pred = astk, interval = TRUE, plot.points = TRUE)
+effect_plot(fit_poly.sex, pred = sex, interval = TRUE, plot.points = TRUE)
+
+effect_plot(fit, pred = astk, interval = TRUE, plot.points = TRUE,
+            jitter = .2)
 
 ```
 
+The diagnostic plots show residuals in four different ways:
 
-## Discussion
+Residuals vs Fitted. Used to check the linear relationship assumptions. A horizontal line, without distinct patterns is an indication for a linear relationship, what is good.
+
+Normal Q-Q. Used to examine whether the residuals are normally distributed. It’s good if residuals points follow the straight dashed line.
+
+Scale-Location (or Spread-Location). Used to check the homogeneity of variance of the residuals (homoscedasticity). Horizontal line with equally spread points is a good indication of homoscedasticity. This is not the case in our example, where we have a heteroscedasticity problem.
+
+Residuals vs Leverage. Used to identify influential cases, that is extreme values that might influence the regression results when included or excluded from the analysis. This plot will be described further in the next sections.
 
 
-## Bibliography
+```{r}
+summ(s.astk.model)
+summ(s.sex.model)
+
+plot(p1_astk)
+plot(p2_astk)
+
+plot(p1_sex)
+plot(p2_sex)
+```
+
+```{r}
+ggplot()+
+  geom_line(data = predict_model_speed, aes(x = predict_model_speed$row_num, y = .), col = "red", size = 1.5)+
+  geom_line(data = deer_cleaned, aes(x = row_num, y = speed), col = "blue", size = .3)+
+  xlab("Data point")+
+  ylab("Speed [m/s]")
+
+print(model)
+plot(model)
+```
+
+# Discussion    {.tabset}
+
+
+<div>
+
+# Bibliography
