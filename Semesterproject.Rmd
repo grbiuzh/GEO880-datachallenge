@@ -342,6 +342,8 @@ ggplot()+
 
 ## Methods
 
+For the further analysis of habitats and potential movement areas, not all 15 deer were used more than that a time analysis for 15 differing time periods does not allow conclusive results. Consequently, deer no. 1, 2 and 3 were selected and used for the methodology of the forecast. Thus, the stag has 1908 measurement points, stag 2 5894 and stag 3 5290. The datasets have been additionally cleaned, so that all lines, which showed a "NoValue" after the above analysis, have been removed. Thus, a total of 13092 measurement points were used, which corresponds to a good 17% of all measurement points and thus represents a large enough sample to make a conclusion and forecast for all measurement points of the 15 deer possible. 
+
 ```{r}
 # Filte roe deer 1,2 and 3 and change coordinates to sf object
 deer_01 <- deer_cleaned %>% filter(TierID == "RE01") %>% na.omit()
@@ -356,28 +358,24 @@ deer_03_sf <- deer_01 %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FA
 
 ```
 
+## Change points in speed
+
+In order to be able to compare whether in the time series, which is examined in the further analysis, the velocity changes strikingly and so-called "change points" occur, a change point analysis was carried out for the subset of roe deers. For this purpose the "BinSeg" method of analysis was used, which is not very accurate but allows a high computational speed compared to other approaches, which is essential for a data set of the size used in this study. 
+
+The used test for the change points was the "Classification Permutation Test (CPT)" method. This non-parametric test for equality of multivariate distributions. trains a classifier to classify (multivariate) observations as coming from one of several distributions. If the classifier is able to classify the observations better than would be expected by chance (using permutation inference), then the null hypothesis that the distributions are equal is rejected.
+
 ```{r}
 #Overview over changepoints in speed for the roe deer
 CP_value01 = cpt.mean(deer_01$speed, method= "BinSeg") # Using method "binseg" cause it is quick but only approximate
-CP_value01
-cpts(CP_value01)
-
-plot(CP_value01,xlab="Date", ylab = "Speed [m/s]" ,main =" Change points in the speed of roe deer 1")
 
 CP_value02 = cpt.mean(deer_02$speed, method= "BinSeg") # Using method "binseg" cause it is quick but only approximate
-CP_value02
-cpts(CP_value02)
-
-plot(CP_value02,xlab="Date", ylab = "Speed [m/s]" ,main =" Change points in the speed of roe deer 2")
 
 CP_value03 = cpt.mean(deer_03$speed, method= "BinSeg") # Using method "binseg" cause it is quick but only approximate
-CP_value03
-cpts(CP_value03)
-
-plot(CP_value03,xlab="Date", ylab = "Speed [m/s]" ,main =" Change points in the speed of roe deer 3")
 ```
 
-Surprisingly we do not set any changepoints in the speed values for the roe deer.
+## Speed forcasting
+
+For the prediction of the velocities on the basis of a time model, the package "Prophet" was used, which creates a time model based on time data and a feature type, i.e. a variable, and on the basis of the seasonalities and fluctuations contained therein, creates a forecast of the values to be achieved. In this model, the speed for the next 24 hours was modeled, for each of the three deer separately. Further, a general trend was calculated by means of the model, which algorithmically analyzes the fluctuations of the days and weeks and creates a trend curve.  The "speed forcasting" function used for this purpose calculates the average speed of each movement segment of the individual animals and predicts the next 24 hours of the animals' speed by means of an additional data set with 24 periods. This results in an additional data set, with the upper and lower trend values of the already existing data and those in the future, which are supplemented with the uncertainty range of the respective predicted values. 
 
 ```{r}
 ### Forecasting speed 
@@ -391,7 +389,7 @@ speed_forcasting <- function(file){
 m.s= prophet(df = deer_mean_speed)
 
 future.s = make_future_dataframe(m = m.s, 
-                               periods = 15, 
+                               periods = 24, 
                                freq = "day")
 
 future.speed = stats::predict(m.s, future.s)
@@ -399,29 +397,49 @@ future.speed = stats::predict(m.s, future.s)
 print(plot(m.s,future.speed) +
   theme_bw()+
   theme(axis.text = element_text(size = 12), axis.title = element_text(size = 14))+
-  labs(x = NULL, y = expression(Roe~deer~speed~(m/s))))
+  labs(x = NULL, y = expression(Roe~deer~speed~(m/s), title = "Timemodel speed prediction for the movement speed in roe deer")))
 
 dyplot.prophet(x = m.s, fcst = future.speed,uncertainty = TRUE )
 
 prophet_plot_components(m = m.s, fcst = future.speed)
 }
 
+```
+
+Time serie analysis for the three roe deer, implemented in a visualization of the observed values, versus the predicted values from the model, with the dark blue line indicating the predicted values, while the light blue area indicates the uncertainty area of the time series speed prediction. The output which was generated also shows the hourly but also weekly trends in the changes of the velocities, which allows a conclusion on a possible behavioral pattern of the animals. 
+
+```{r}
 deer_01_s.f <- speed_forcasting(deer_01)
+```
+
+Time series speed prediction for roe deer 2:
+
+```{r}
 deer_02_s.f <- speed_forcasting(deer_02)
+```
+Time series speed prediction for roe deer 3:
+
+```{r}
 deer_03_s.f <- speed_forcasting(deer_03)
 ```
+
 ## Home range estimation
+
+From the forecast data of the time model, the upper and lower trend values of the forecasted 24h were used to predict the homerange, i.e. the possible residence areas of the animals. For this purpose, two areas were calculated: a minimum and a maximum distance which is possible for the animal on the basis of the forecast. The functions "min max" calculated first by means of the lower and upper prognosis border, the distance in meters, which the animal can reach, if it holds the prognosticated averaged speed over the next 24h. From the distance resulting from it by means of the function "Homerange" a minimum and a maximum distance buffer were computed and assigned to the coordinates of the all last measurement. Additionally  
 
 ```{r}
 min_max <- function(file){ 
   min_speed = tail(file[[1]][["data"]][["trend_lower"]], n = 1) 
   max_speed = tail(file[[1]][["data"]][["trend_upper"]], n = 1)
+  trend = tail(file[[1]][["data"]][["trend"]], n = 1)
   min_distance = (min_speed * 86400)
   max_distance = (max_speed * 86400)
+  trend = (trend * 86400)
   df <- data.frame (min_HR = min_speed,
                     max_HR = max_speed,
                     min_distance = min_distance,
-                    max_distance = max_distance)
+                    max_distance = max_distance,
+                    trend = trend)
 }
 
 deer01_HR <- min_max(deer_01_s.f)
@@ -438,27 +456,37 @@ homerange <- function(file, f1){
   
   min_buffer = buffer_point %>% st_buffer(dist= f1$min_distance)
   max_buffer = buffer_point %>% st_buffer(dist= f1$max_distance)
-  rbind(min_buffer, max_buffer)
+  trend_buffer = buffer_point %>% st_buffer(dist= f1$trend)
+  rbind(min_buffer, max_buffer, trend_buffer)
 }
 
 homerange_deer1 <- homerange(deer_01, deer01_HR)
 homerange_deer2 <- homerange(deer_02, deer02_HR)
 homerange_deer3 <- homerange(deer_03, deer03_HR)
 
+```
+
+In addition to the minimum and maximum velocity values calculated by the model, the trend value was also used to calculate a third distance value that best reflects the possible distance over time. These distance values are visualized in the following plot, where the minimum and maximum travel distance for the deer 1, 2 and 3 are shown and complemented by the trend values. Thus, the minimum distance is shown in green, the maximum distance value in red and the optimal trend value in blue.  
+
+```{r}
+HR123 <- rbind(deer01_HR,deer02_HR,deer03_HR)
+HR123$deer_number <- seq.int(nrow(HR123)) 
+
 ggplot()+
-  geom_path(data = deer1_3, aes(x,y, col = TierID))+
-  geom_point(data = deer1_3, aes(x,y, col = TierID))+
-  geom_sf(data = homerange_deer1, col = "red", alpha = .1)+
-  geom_sf(data = homerange_deer2, col = "darkgreen", alpha = .1)+
-  geom_sf(data = homerange_deer3, col = "blue", alpha = .1)+
-  ggtitle("Predicted homerange for Roe deer 1,2 and 3 in the next 24 hours \nwith the minimum and maximum distance")+
-  xlab("X")+
-  ylab("Y")+
-  theme_minimal()+
-  coord_sf(datum = 2056)
+  geom_line(data = HR123, aes(y=min_distance,x = deer_number, col = "green"))+
+  geom_line(data = HR123, aes(y=max_distance,x = deer_number, col = "yellow"))+
+  geom_line(data = HR123, aes(y=trend,x = deer_number, col = "orange"))+
+  ylab("Homerange distances [m]")+
+  xlab("Deer")+
+  labs(colour='Homerange distance type')+
+  scale_color_manual(labels = c("Minimum distance","Trend distance", "Maximum distance"),
+                     values = c("green", "blue", "red")) +
+  ggtitle("Roaming distances for roe deer in the proximate future")
 ```
 
 ## Linear predictive model
+
+As a final methodological step for the analysis and prediction of deer velocities, linear models and a k-nearest-neighbor algorithm were used to determine the statistical relationship of velocity with the variables: "sex, distance between two measurement points, time difference, ground cover according to the Arealstatistik and the turning angle between to following trajectory segments. For the comparison of the velocity values among themselves and how they influence each other, the KNN algorithm was used and the velocity values were classified to determine if the velocity is autocorrelated or not, from the resulting data a further prediction of the velocity was derived to better assess the uncertainty of the previous linear models. To compare the different outputs of the KNN algorithm, a 10-fold cross-validation was performed, which compares the possible combinations of sample size and variables used and selects the best model. A seed was also set for this, as for the linear models, in order to obtain the same outputs of the models in further analyses.  
 
 ```{r LM}
 # https://cran.r-project.org/web/packages/jtools/vignettes/effect_plot.html
@@ -497,7 +525,48 @@ predict_model_speed$row_num <- seq.int(nrow(predict_model_speed))
 deer_cleaned$row_num <- seq.int(nrow(deer_cleaned)) 
 ```
 
+
 # Results    {.tabset}
+
+```{r}
+deer_01_s.f <- speed_forcasting(deer_01)
+deer_02_s.f <- speed_forcasting(deer_02)
+deer_03_s.f <- speed_forcasting(deer_03)
+```
+
+```{r}
+ggplot()+
+  geom_path(data = deer1_3, aes(x,y, col = TierID))+
+  geom_point(data = deer1_3, aes(x,y, col = TierID))+
+  geom_sf(data = homerange_deer1, col = "red", alpha = .1)+
+  geom_sf(data = homerange_deer2, col = "darkgreen", alpha = .1)+
+  geom_sf(data = homerange_deer3, col = "blue", alpha = .1)+
+  ggtitle("Predicted homerange for Roe deer 1,2 and 3 in the next 24 hours \nwith the minimum and maximum distance")+
+  xlab("X")+
+  ylab("Y")+
+  theme_minimal()+
+  coord_sf(datum = 2056)
+```
+
+```{r}
+CP_value01
+cpts(CP_value01)
+
+plot(CP_value01,xlab="Date", ylab = "Speed [m/s]" ,main =" Change points in the speed of roe deer 1")
+
+CP_value02
+cpts(CP_value02)
+
+plot(CP_value02,xlab="Date", ylab = "Speed [m/s]" ,main =" Change points in the speed of roe deer 2")
+
+CP_value03
+cpts(CP_value03)
+
+plot(CP_value03,xlab="Date", ylab = "Speed [m/s]" ,main =" Change points in the speed of roe deer 3")
+
+
+```
+
 
 ```{r}
 #Summary
