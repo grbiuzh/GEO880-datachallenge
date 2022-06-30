@@ -226,6 +226,16 @@ deer_cleaned <- do.call(rbind, deer)
 deer_cleaned <- deer_cleaned %>% group_by(TierID) %>% mutate(
   timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')), #timelag is in minutes
   steplength = sqrt((y - lead(y,1))^2+ (x - lead(x,1))^2)) %>% mutate(speed = (steplength / timelag))
+
+# Calculating additional attribute
+colnames(deer_cleaned)[3] <- "ID"
+deer_cleaned <- prepData(deer_cleaned, type = "UTM", ) %>% 
+  data.frame() %>% 
+  subset(select = -step) %>% 
+  relocate(angle, .after = speed) %>%
+  rename(TierID = ID) %>%
+  relocate(TierID, .before = sex)
+
 ```
 
 
