@@ -47,6 +47,7 @@ library(CINNA)
 library(xts)
 library(class)
 library(caret)
+library(moveHMM)
 
 knitr::opts_chunk$set(
   message = F,

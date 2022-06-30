@@ -47,6 +47,8 @@ library(CINNA)
 library(xts)
 library(class)
 library(caret)
+library(moveHMM)
+
 
 knitr::opts_chunk$set(
   message = F,
@@ -461,9 +463,9 @@ ggplot()+
 ```{r LM}
 # https://cran.r-project.org/web/packages/jtools/vignettes/effect_plot.html
 #Linear approach
-fit <- lm(speed ~ sex + timelag + x + y + steplength + astk + TierID, data = deer_cleaned)
-fit_poly.astk <- lm(speed ~ sex + timelag + x + y + steplength + poly(astk, 2) + TierID, data = deer_cleaned)
-fit_poly.sex <- lm(speed ~ poly(sex, 1) + timelag + x + y + steplength + astk + TierID, data = deer_cleaned)
+fit <- lm(speed ~ sex + timelag + x + y + steplength + astk + angle, data = deer_cleaned)
+fit_poly.astk <- lm(speed ~ sex + timelag + x + y + steplength + poly(astk, 2) + angle, data = deer_cleaned)
+fit_poly.sex <- lm(speed ~ poly(sex, 1) + timelag + x + y + steplength + astk + angle, data = deer_cleaned)
 
 #predicts the future values
 s.astk.model <- lm(speed~astk,data = deer_cleaned)
@@ -484,7 +486,7 @@ set.seed(54)
 train.control <- trainControl(method = "cv", number = 10)
 
 # Train the model
-model <- train(speed ~ sex + timelag + x + y + steplength + astk
+model <- train(speed ~ sex + timelag + x + y + steplength + astk+ angle
                , data = deer_cleaned
                , trControl = train.control, method = "knn")
 
@@ -532,9 +534,6 @@ Residuals vs Leverage. Used to identify influential cases, that is extreme value
 
 
 ```{r}
-summ(s.astk.model)
-summ(s.sex.model)
-
 plot(p1_astk)
 plot(p2_astk)
 
@@ -543,14 +542,16 @@ plot(p2_sex)
 ```
 
 ```{r}
+plot(model)
+print(model)
+
 ggplot()+
-  geom_line(data = predict_model_speed, aes(x = predict_model_speed$row_num, y = .), col = "red", size = 1.5)+
+  geom_line(data = predict_model_speed, aes(x = row_num, y = .), col = "red", size = 1.5)+
   geom_line(data = deer_cleaned, aes(x = row_num, y = speed), col = "blue", size = .3)+
   xlab("Data point")+
-  ylab("Speed [m/s]")
+  ylab("Speed [m/s]")+
+  ggtitle("Predicted speed [red] using k-nearest neighboors algorithm plotted \nagainst observed speed [blue] in roe deer")
 
-print(model)
-plot(model)
 ```
 
 # Discussion    {.tabset}
