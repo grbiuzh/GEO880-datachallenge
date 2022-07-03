@@ -2,18 +2,19 @@
 title: "Forecasting future movement from speed trajectories in Roe Deer using a linear predictive model and time series analysis"
 subtitle: "Data challenge :GEO880, Patterns and Trends in Environmental Data - Computational Movement Analysis"
 author: "Tim Fässler and Gregory Biland"
-date: "30/05/2022"
+date: "03/07/2022"
 output:
   prettydoc::html_pretty:
     theme: cayman
     highlight: github
     math: katex
+    text-align: justify
 ---
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, warning= FALSE}
 library(knitr)
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
-
+  
   # html_document:
   #   theme: spacelab
   #   highlight: monochrome
@@ -24,15 +25,14 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
   
 ``` 
 
-
 ```{r, message=FALSE, warning=FALSE,, include=FALSE}
 Sys.setenv(LANG = "en")
-library(readr)  # to import tabular data (e.g. csv)
+library(readr)  
 library(tidyr)
 library(tibble)
-library(dplyr)        # to manipulate (tabular) data
-library(sf)           # to handle spatial vector data
-library(lubridate)    # To handle dates and times
+library(dplyr)        
+library(sf)           
+library(lubridate)  
 library(ggplot2)
 library(caTools)
 library(caret)
@@ -42,7 +42,7 @@ library(MASS)
 library(jtools)
 library(leaflet)
 library(simplevis)
-
+library(ggmap)
 library(tseries)
 library(ggfortify)
 library(changepoint)
@@ -54,7 +54,6 @@ library(xts)
 library(class)
 library(caret)
 library(moveHMM)
-
 
 knitr::opts_chunk$set(
   message = F,
@@ -71,7 +70,6 @@ figureFolder <- here::here("figs")
 ```
 
 ```{r, include=FALSE}
-
 deer <- read_delim(file.path(dataFolder, "all_deer_complete.csv")) %>% data.frame()
 
 canton_zh <- st_read(file.path(dataFolder,"Gemeindegrenzen_-OGD/UP_KANTON_F.shp"))
@@ -82,11 +80,12 @@ ASTK_ZH <- read_delim(file.path(dataFolder, "ASTK_ZH.csv"))
 <div class=text-justify>
 
 # Abstract
-Animal movement has always been a complex field of study as it consists of and compiles the difficulties of ecology, geography and data science. This project seeks to merge these three disciplines as it tries to predict the future movement of Roe Deer through space with the usage of an linear model with constraints set up by typical biological behaviours of the Roe Deer.
+
+Animal movement has always been a complex field of study as it consists of and compiles the difficulties of ecology, geography and data science. This project seeks to merge these three disciplines as it tries to predict the future movement of Roe Deer through space with the usage of time series predictions and different kind of models predicting and searching for dependencies of different computational movement variables and contextual variables to the main variable of this work: speed. Although the time series predictions and the following roaming-range estimation produce plausible results, the following speed change point analysis calculates that the variable speed is predicted poorly by the time series model (BIC: 20-30). The linear predictive model of the variable speed results in a very low R-squared value of 0.29, suggesting either an absence of correlations or an underlying problem of the methods or data. Ultimately the second explanation seems more plausible due to the, in this context, sometimes low sampling intervals of three hours, which result in very skewed velocities, as the deer tend to move not only in one direction and therefore cancel out steplength and the from it derived speed. For further work, either this underlying problem of the speed variable would need to be removed or the significance and centrality of the speed variable in the models would need to be readjusted.
 
 # Background and research goals
 
-With the continuous compaction of the soil and progressive sealing, the habitat of native species in Switzerland is increasingly under pressure [Note]. To counteract this pressure, it has become essential to sustainably protect the habitats of animals and thus preserve the diverse biodiversity. For this to be possible, it is essential to know where the animals move and where possible areas could be. In this way, it is possible to prevent roads and settlements from fragmenting animal habitats or negatively affecting the animals through the noise and anthropogenic influences. This prediction of habitats based on predicted movement distances is the content of this paper, which is based on GPS data of 15 tracked red deer in Zurich. Using GPS data from 15 deer in the south of the canton of Zurich, we evaluate the individual movement paths of three animals and attempt to use a time model to predict the speed at which the animals will move 24 hours after the last measurement point and thus determine the maximum distance the animals will travel. In order to be able to control for how much ground cover affects this prediction, a linear model was created to examine the relationship between area statistics and velocity.
+With the continuous compaction of the soil and progressive sealing and materializing climate change symptoms, the habitat of native species in Switzerland is increasingly under pressure (Vittoz et al., 2013). To counteract this pressure, it has become essential to sustainably protect the habitats of animals and thus preserve the diverse biodiversity. For this to be possible, it is essential to know where the animals move and where possible areas could be. In this way, it is possible to prevent roads and settlements from fragmenting animal habitats or negatively affecting the animals through the noise and anthropogenic influences. This prediction of habitats based on predicted movement distances is the content of this paper, which is based on GPS data of 15 tracked roe deer in Zurich. Using GPS data from 15 deer in the south of the canton of Zurich, we evaluate the individual movement paths of three animals and attempt to use a time model to predict the speed at which the animals will move 24 hours after the last measurement point and thus determine the maximum distance the animals will travel. In order to be able to control for how much ground cover affects this prediction, a linear model was created to examine the relationship between area statistics and velocity.
 
 Our research questions are:
 
@@ -100,16 +99,23 @@ The research questions are answered utilizing a time analysis and models, as wel
 
 ## Data
 
+The data set of Roe deer movement between 2013 and 2016 was provided by Nils Ratnaweera from the Zurich University of Applied Sciences (ZHAW). The data set consists of a list of 81'025 coordinate points of GPS-tracked 15 Roe deer with additional attributes of sex and the for movement analysis necessary attribute date and time of the recorded coordinates. The points were tracked in different sampling intervals ranging from 3 hours to sections of multiple 5 min interval samplings. Therefore, the temporal data quality was ranging between medium to good, but the data set needed further investigation on a spatial level to review the plausibility of the coordinate points, which was handled in the following pre-processing stage of the project.
+
 ```{r}
+# Overview of original data
 head(deer)
 ```
 
 ## Preprocessing
+
+The pre-processing stage can be split up into two parts, the data artifacts handling part and the data preparation part. We will start with some general data preparation parts which include a definition of the area of interest and some simple processing code chunks so that the deer data is easier to use in further analyses.This included changing values so that they were numeric, as well as renaming variables and features for consistent and clear further processing. In addition, the coordinates had to be reprojected, as the coordinates in the data set of the 15 roe deer were in the old country triangulation LV03 and thus had to be converted to the new country triangulation LV95 first. In addition, the data were reaggregated into simple features, which greatly simplified spatial analysis. A bounding box of the study area was created and enlarged by one kilometer on each side to further down the line extract the data of the Arealstatistik. The reason to why it was enlarged was that we might need the data of the Arealstatistik, which lies outside of the furthest data point, as their future movement prediction might end up there.
+
 ```{r}
-#deer <- deer %>% group_by(reh) %>% mutate(Name = randomNames(reh, ethnicity = 4)) #Give deer names
+# Defining area of interest
 canton_zh <- canton_zh %>% subset(KANTON == "Zürich")
 canton_zh <- canton_zh %>% st_transform(2056)
 
+# Cropping big dataset of Arealstatistik, saving it again
 # ASTK <- ASTK %>% st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE)
 # ASTK_ZH <- st_join(canton_zh, ASTK, join = st_contains_properly, left=TRUE)
 # ASTK_ZH <- ASTK_ZH %>% st_drop_geometry()
@@ -119,9 +125,12 @@ canton_zh <- canton_zh %>% st_transform(2056)
 deer$sex[deer$sex == "m"] <- as.numeric(0)
 deer$sex[deer$sex == "f"] <- as.numeric(1)
 
+# Cleaning up the data frame for further use
 deer <- deer %>% rename(TierID = reh, DatetimeUTC = datetime_utc)
 colnames(deer)[c(3,4)] <- c("x","y")
+deer <- deer %>% mutate(sex = as.numeric(sex))
 
+# Converting the old swiss triangulation (LV03, EPSG:21781) to the new one (LV95, EPSG: 2056)
 deer <- deer %>% mutate(
   x = x + 2000000,
   y = y + 1000000
@@ -147,19 +156,14 @@ bbox_df$X2[4] = bbox_df$X2[4] + 1000
 bbox_df$X2[5] = bbox_df$X2[5] - 1000
 bbox_sf <- bbox_df %>% st_as_sf(coords = c('X1', 'X2'), crs = 2056)
 
+# Polygonizing the Bounding Box Points
 bbox_sf <- bbox_sf %>% 
   summarise(geometry = st_combine(geometry)) %>%
   st_cast("POLYGON")
-
 bbox_sf <- bbox_sf %>% st_transform(2056)
 
 ```
 
-```{r}
-#Rename deer as numeric and remove long lat
-deer <- deer %>% mutate(sex = as.numeric(sex))
-
-```
 
 ```{r}
 #Plot data for overview
@@ -175,11 +179,16 @@ ggplot()+
   theme_minimal() +
   coord_sf(datum = 2056)
 
-# leaf_sf_col(deer_sf_LL, 
-#                col_var = TierID)
+# With geographic context, WGS84 because ggmap prefers lat, long
+ggmap(get_stamenmap(c(8.399048,47.143926,8.657227,47.352687), maptype = "terrain-background"))+
+  geom_path(deer, mapping = aes(longitude, latitude, color = TierID))+
+  geom_point(deer, mapping = aes(longitude, latitude, color = TierID))+
+  ggtitle("Movement patterns with geographic context")
 ```
 
 ## Geometry calculations 
+
+On first visual inspection the data, most of the coordinate points seem to make sense spatially, as usual with some exceptions. Some of the point are suspiciously far apart from the others, which led us to believe that they might be outliers caused by problems of the measurements or artifacts of data handling somewhere along the way. Adding geographic context reinforce these suspicions, as for example one of data points of the deer labeled "RE01" lies in the lake of Zurich, which is rather implausible. Detecting spatial outliers might be easy from a visualization and from spatial context but is not as easy to compute. After thinking about and trying different solutions considering nearest distances, speed metrics we ended up removing outliers derived from strongly deviating steplenghts. In order to calculate those our first geometry calculations had to be computed, namely steplengths and speeds derived from the coordinate points and the time stamps.
 
 ```{r}
 deer <- deer %>% group_by(TierID) %>% mutate(
@@ -192,52 +201,68 @@ deer <- deer %>% drop_na() %>% data.frame() %>% subset(select= -c(longitude, lat
 
 ## Outlier Handling
 
+For the outlier removal we chose the attribute steplength. On inspection of the speed variable, which we initially deemed most appropriate for spotting outliers, we realized that basically all speeds were very low in velocity and even the highest speeds were plausible speeds for deer movement. These low speeds can be explained with the temporal sampling intervals as the deer tend to stay in a small area and might end up at the same starting and endpoint between records of the coordinate and time. This effects is reinforced with long sampling intervals because the speed is a function of the timelag and behaves accordingly if the probability increases over time that a deer moves backwards or sideways instead of in only one direction. Therefore, although the value of the steplength is also problematic with certain samplings, it is still more useful for detecting outliers as a long movement in one direction is very rare, no matter the timelag. To remove the outliers we filtered the first and the last percentile of the points per deer.
+
 ```{r}
+# Calculating percentiles breaks per deer
+deer_quantiles_steplength <- deer %>% group_by(TierID) %>% summarize(qua1 = quantile(steplength, 0.01, na.rm = TRUE), qua2 = quantile(steplength, 0.99, na.rm = TRUE))
 
-deer_quantiles_speed <- deer %>% group_by(TierID) %>% summarize(qua1 = quantile(speed, 0.01, na.rm = TRUE), qua2 = quantile(speed, 0.99, na.rm = TRUE))
-
+# Splitting the deer data and removing points outside the percentile breaks
 deer <- deer %>% split(deer$TierID)
-
-deer$RE01 <- deer$RE01[deer$RE01$speed >= deer_quantiles_speed$qua1[1] & 
-                       deer$RE01$speed <= deer_quantiles_speed$qua2[1],]
-deer$RE02 <- deer$RE02[deer$RE02$speed >= deer_quantiles_speed$qua1[2] & 
-                       deer$RE02$speed <= deer_quantiles_speed$qua2[2],]
-deer$RE03 <- deer$RE03[deer$RE03$speed >= deer_quantiles_speed$qua1[3] & 
-                       deer$RE03$speed <= deer_quantiles_speed$qua2[3],]
-deer$RE04 <- deer$RE04[deer$RE04$speed >= deer_quantiles_speed$qua1[4] & 
-                       deer$RE04$speed <= deer_quantiles_speed$qua2[4],]
-deer$RE05 <- deer$RE05[deer$RE05$speed >= deer_quantiles_speed$qua1[5] & 
-                       deer$RE05$speed <= deer_quantiles_speed$qua2[5],]
-deer$RE06 <- deer$RE06[deer$RE06$speed >= deer_quantiles_speed$qua1[6] & 
-                       deer$RE06$speed <= deer_quantiles_speed$qua2[6],]
-deer$RE07 <- deer$RE07[deer$RE07$speed >= deer_quantiles_speed$qua1[7] & 
-                       deer$RE07$speed <= deer_quantiles_speed$qua2[7],]
-deer$RE08 <- deer$RE08[deer$RE08$speed >= deer_quantiles_speed$qua1[8] & 
-                       deer$RE08$speed <= deer_quantiles_speed$qua2[8],]
-deer$RE09 <- deer$RE09[deer$RE09$speed >= deer_quantiles_speed$qua1[9] & 
-                       deer$RE09$speed <= deer_quantiles_speed$qua2[9],]
-deer$RE010 <- deer$RE010[deer$RE010$speed >= deer_quantiles_speed$qua1[10] & 
-                       deer$RE010$speed <= deer_quantiles_speed$qua2[10],]
-deer$RE011 <- deer$RE011[deer$RE011$speed >= deer_quantiles_speed$qua1[11] & 
-                       deer$RE011$speed <= deer_quantiles_speed$qua2[11],]
-deer$RE012 <- deer$RE012[deer$RE012$speed >= deer_quantiles_speed$qua1[12] & 
-                       deer$RE012$speed <= deer_quantiles_speed$qua2[12],]
-deer$RE013 <- deer$RE013[deer$RE013$speed >= deer_quantiles_speed$qua1[13] & 
-                       deer$RE013$speed <= deer_quantiles_speed$qua2[13],]
-deer$RE014 <- deer$RE014[deer$RE014$speed >= deer_quantiles_speed$qua1[14] & 
-                       deer$RE014$speed <= deer_quantiles_speed$qua2[14],]
-deer$RE015 <- deer$RE015[deer$RE015$speed >= deer_quantiles_speed$qua1[15] & 
-                       deer$RE015$speed <= deer_quantiles_speed$qua2[15],]
-
+deer$RE01 <- deer$RE01[deer$RE01$steplength >= deer_quantiles_steplength$qua1[1] & 
+                       deer$RE01$steplength <= deer_quantiles_steplength$qua2[1],]
+deer$RE02 <- deer$RE02[deer$RE02$steplength >= deer_quantiles_steplength$qua1[2] & 
+                       deer$RE02$steplength <= deer_quantiles_steplength$qua2[2],]
+deer$RE03 <- deer$RE03[deer$RE03$steplength >= deer_quantiles_steplength$qua1[3] & 
+                       deer$RE03$steplength <= deer_quantiles_steplength$qua2[3],]
+deer$RE04 <- deer$RE04[deer$RE04$steplength >= deer_quantiles_steplength$qua1[4] & 
+                       deer$RE04$steplength <= deer_quantiles_steplength$qua2[4],]
+deer$RE05 <- deer$RE05[deer$RE05$steplength >= deer_quantiles_steplength$qua1[5] & 
+                       deer$RE05$steplength <= deer_quantiles_steplength$qua2[5],]
+deer$RE06 <- deer$RE06[deer$RE06$steplength >= deer_quantiles_steplength$qua1[6] & 
+                       deer$RE06$steplength <= deer_quantiles_steplength$qua2[6],]
+deer$RE07 <- deer$RE07[deer$RE07$steplength >= deer_quantiles_steplength$qua1[7] & 
+                       deer$RE07$steplength <= deer_quantiles_steplength$qua2[7],]
+deer$RE08 <- deer$RE08[deer$RE08$steplength >= deer_quantiles_steplength$qua1[8] & 
+                       deer$RE08$steplength <= deer_quantiles_steplength$qua2[8],]
+deer$RE09 <- deer$RE09[deer$RE09$steplength >= deer_quantiles_steplength$qua1[9] & 
+                       deer$RE09$steplength <= deer_quantiles_steplength$qua2[9],]
+deer$RE010 <- deer$RE010[deer$RE010$steplength >= deer_quantiles_steplength$qua1[10] & 
+                       deer$RE010$steplength <= deer_quantiles_steplength$qua2[10],]
+deer$RE011 <- deer$RE011[deer$RE011$steplength >= deer_quantiles_steplength$qua1[11] & 
+                       deer$RE011$steplength <= deer_quantiles_steplength$qua2[11],]
+deer$RE012 <- deer$RE012[deer$RE012$steplength >= deer_quantiles_steplength$qua1[12] & 
+                       deer$RE012$steplength <= deer_quantiles_steplength$qua2[12],]
+deer$RE013 <- deer$RE013[deer$RE013$steplength >= deer_quantiles_steplength$qua1[13] & 
+                       deer$RE013$steplength <= deer_quantiles_steplength$qua2[13],]
+deer$RE014 <- deer$RE014[deer$RE014$steplength >= deer_quantiles_steplength$qua1[14] & 
+                       deer$RE014$steplength <= deer_quantiles_steplength$qua2[14],]
+deer$RE015 <- deer$RE015[deer$RE015$steplength >= deer_quantiles_steplength$qua1[15] & 
+                       deer$RE015$steplength <= deer_quantiles_steplength$qua2[15],]
 deer_cleaned <- do.call(rbind, deer)
+```
 
+```{r}
+# Plotting the filtered data 
+ggplot()+
+  geom_sf(data=bbox_sf, alpha=.1)+
+  geom_path(data = deer_cleaned,aes(x,y,  col = TierID))+
+  geom_point(data = deer_cleaned,aes(x,y, col = TierID))+
+  ggtitle("Deer movement with removed outliers")+
+  xlab("X")+
+  ylab("Y")+
+  theme_minimal() +
+  coord_sf(datum = 2056)
+```
+After the removal of the outliers the timelags, steplengths and speeds had to be recalculated and we additionally used the package moveHMM (Michelot et al., 2016) to calculate the turning angles of each data point for further use.
+
+```{r}
 # Recalculating timelag, steplength and speed
-
 deer_cleaned <- deer_cleaned %>% group_by(TierID) %>% mutate(
-  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')), #timelag is in minutes
+  timelag = as.integer(difftime(lead(DatetimeUTC),DatetimeUTC, units = 'secs')),
   steplength = sqrt((y - lead(y,1))^2+ (x - lead(x,1))^2)) %>% mutate(speed = (steplength / timelag))
 
-# Calculating additional attribute
+# Calculating turning angles 
 colnames(deer_cleaned)[3] <- "ID"
 deer_cleaned <- prepData(deer_cleaned, type = "UTM", ) %>% 
   data.frame() %>% 
@@ -245,57 +270,48 @@ deer_cleaned <- prepData(deer_cleaned, type = "UTM", ) %>%
   relocate(angle, .after = speed) %>%
   rename(TierID = ID) %>%
   relocate(TierID, .before = sex)
-
 ```
 
-
-```{r}
-# So wärs mit 0.01 und 0.99 percentil removed, chönd au no meh filtere
-ggplot()+
-  geom_sf(data=bbox_sf, alpha=.1)+
-  geom_path(data = deer_cleaned,aes(x,y,  col = TierID))+
-  geom_point(data = deer_cleaned,aes(x,y, col = TierID))+
-  ggtitle("Movement patterns for 15 different roe deer with the bounding box for the observation field around")+
-  xlab("X")+
-  ylab("Y")+
-  theme_minimal() +
-  coord_sf(datum = 2056)
-```
+The following three plots visualize the nature and the potentially problematic aspects of the additional deer variables, namely:
+<br>
+- Speed: Very clustered low values with some very high values, but not absolutely high (max. ~3 m/s) but just relatively
+<br>
+- Steplength: Similar to the speeds, clustered low values with some high values.
+<br>
+- Sampling intervals: Most samplings between 10'000 and 20'000 seconds (3 - 6h), some lower (5min), some higher (result of removing outliers and recalculating new timelags)
 
 ```{r}
 ggplot()+
   geom_line(data = deer_cleaned, aes(x=DatetimeUTC, y = speed, col= TierID))+
-  ggtitle("Monitoring timespan for 15 different roe deer")+
+  ggtitle("Variable Speed for the 15 roe deer")+
   ylab("Speed [m/s]")+
-  xlab("Deer")
+  xlab("Deer & Time Period")
 
 ggplot()+
   geom_line(data = deer_cleaned, aes(x=DatetimeUTC, y = steplength, col= TierID))+
-  ggtitle("Monitoring timespan for 15 different roe deer")+
+  ggtitle("Variable Steplength for the 15 roe deer")+
   ylab("Steplegth [m]")+
-  xlab("Deer")
+  xlab("Deer & Time Period")
 
 ggplot()+
   geom_line(data = deer_cleaned, aes(x=DatetimeUTC, y = timelag, col= TierID))+
-  ggtitle("Monitoring timespan for 15 different roe deer")+
+  ggtitle("Sampling intervals for the 15 roe deer")+
   ylab("Steplegth [m]")+
-  xlab("Deer")
+  xlab("Deer & Time Period")
 ```
 
-## Arealstatistik
+# Arealstatistik
+
+As movement of animals is strongly influenced by their surrounding we opted to include a contextual attribute in the form of the Arealstatistik (BFS, 13/18), a official surface classification with a resolution of 100x100m. The preparation of the Arealstatistik included extracting the data inside the bounding box of interest, creating and populating a raster and consecutively joining the value of the Arealstatistik of the raster to the deer point data located in them.
 
 ```{r}
-
-# Updating bounding box
+# Updating bounding box after removing outliers
 bbox_df$X2[c(1,2,5)] <- min(deer_cleaned$y) - 1000
-
 bbox_sf <- bbox_df %>% st_as_sf(coords = c('X1', 'X2'), crs = 2056)
 bbox_sf <- bbox_sf %>% 
   summarise(geometry = st_combine(geometry)) %>%
   st_cast("POLYGON")
 bbox_sf <- bbox_sf %>% st_transform(2056)
-
-
 
 # Extracting the relevant cells of the Arealstatistik
 ASTK_ZH <- ASTK_ZH %>% st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE)
@@ -324,28 +340,38 @@ deer_cleaned <- deer_cleaned %>% mutate(astk = as.vector(extract(ASTK_raster, st
 
 deer_cleaned$astk[is.na(deer_cleaned$astk)] <- 0
 deer_cleaned <- deer_cleaned %>% na.omit()
+
+ASTK_docu <- read_delim(file.path(dataFolder, "Arealstatistik_Dokumentation.csv"))
+stats_astk <- deer_cleaned %>% group_by(astk) %>% summarize(n()) %>% rename(amount = 2) %>% merge(ASTK_docu, by.x = "astk", by.y = "CODE")
+stats_astk <- stats_astk[order(stats_astk$amount, decreasing = TRUE), ] 
+head(stats_astk)
+
 ```
 
+Altough it is hard to see in the following visualisation, the deer seem to predominately prefer "normal forest" (~65%) and "nature meadows" (~13%), followed by "home pastures" (~5%) and "dispersed forest" (3.5%).
+
 ```{r}
+# Quick Visualization of the Arealstatistik
 raster_vis <- as.data.frame(ASTK_raster, xy = TRUE)
 
 ggplot()+
-  # geom_sf(data = canton_zh, fill = alpha("white", .1))+
   geom_sf(data = bbox_sf)+
   geom_raster(data = raster_vis, aes(x = x, y = y, alpha = layer))+
   geom_path(data = deer_cleaned, aes(x = x, y = y, col = TierID), alpha = 0.3)+
   geom_point(data = deer_cleaned, aes(x = x, y = y, col = TierID), size = .1)+
   coord_sf(datum = 2056)+
   theme_minimal()+
-  ggtitle("Tracking points for roe deer")
+  ggtitle("Tracking points for roe deer")+
+  theme(legend.position = "None")
   
+# Colored depending on the value of the Arealstatistik
 ggplot()+
   geom_raster(data = raster_vis, aes(x = x, y = y, alpha = layer))+
   coord_sf(datum = 2056)+
-  geom_point(data = deer_cleaned, aes(x,y, color = as.factor(astk)))+
-  geom_path(data = deer_cleaned, aes(x = x, y = y), alpha = 0.3)+
+  geom_point(data = deer_cleaned, aes(x,y, color = as.factor(astk), alpha = 0.5), size = 0.01)+
   theme_minimal()+
-  ggtitle("Tracking points for roe deer with the Arealstatistik")
+  ggtitle("Points colored according to the Arealstatistik")+
+  theme(legend.position = "None")
 ```
 
 ## Methods
@@ -353,7 +379,7 @@ ggplot()+
 For the further analysis of habitats and potential movement areas, not all 15 deer were used more than that a time analysis for 15 differing time periods does not allow conclusive results. Consequently, deer no. 1, 2 and 3 were selected and used for the methodology of the forecast. Thus, the stag has 1908 measurement points, stag 2 5894 and stag 3 5290. The datasets have been additionally cleaned, so that all lines, which showed a "NoValue" after the above analysis, have been removed. Thus, a total of 13092 measurement points were used, which corresponds to a good 17% of all measurement points and thus represents a large enough sample to make a conclusion and forecast for all measurement points of the 15 deer possible. 
 
 ```{r}
-# Filte roe deer 1,2 and 3 and change coordinates to sf object
+# Filter roe deer 1,2 and 3 and change coordinates to sf object
 deer_01 <- deer_cleaned %>% filter(TierID == "RE01") %>% na.omit()
 deer_02 <- deer_cleaned %>% filter(TierID == "RE02") %>% na.omit()
 deer_03 <- deer_cleaned %>% filter(TierID == "RE03") %>% na.omit()
@@ -368,8 +394,8 @@ deer_03_sf <- deer_01 %>% st_as_sf(coords = c("x", "y"), crs = 2056, remove = FA
 
 ## Change points in speed
 
-In order to be able to compare whether in the time series, which is examined in the further analysis, the velocity changes strikingly and so-called "change points" occur, a change point analysis was carried out for the subset of roe deers. For this purpose the "BinSeg" method of analysis was used, which is not very accurate but allows a high computational speed compared to other approaches, which is essential for a data set of the size used in this study. 
-
+In order to be able to compare whether in the time series, which is examined in the further analysis, the velocity changes strikingly and so-called "change points" occur, a change point analysis (Killick et al., 2022) was carried out for the subset of roe deers. For this purpose the "BinSeg" method of analysis was used, which is not very accurate but allows a high computational speed compared to other approaches, which is essential for a data set of the size used in this study. 
+<br>
 The used test for the change points was the "Classification Permutation Test (CPT)" method. This non-parametric test for equality of multivariate distributions. trains a classifier to classify (multivariate) observations as coming from one of several distributions. If the classifier is able to classify the observations better than would be expected by chance (using permutation inference), then the null hypothesis that the distributions are equal is rejected.
 
 ```{r}
@@ -381,13 +407,13 @@ CP_value02 = cpt.mean(deer_02$speed, method= "BinSeg") # Using method "binseg" c
 CP_value03 = cpt.mean(deer_03$speed, method= "BinSeg") # Using method "binseg" cause it is quick but only approximate
 ```
 
-## Speed forcasting
+## Speed forecasting
 
-For the prediction of the velocities on the basis of a time model, the package "Prophet" was used, which creates a time model based on time data and a feature type, i.e. a variable, and on the basis of the seasonalities and fluctuations contained therein, creates a forecast of the values to be achieved. In this model, the speed for the next 24 hours was modeled, for each of the three deer separately. Further, a general trend was calculated by means of the model, which algorithmically analyzes the fluctuations of the days and weeks and creates a trend curve.  The "speed forcasting" function used for this purpose calculates the average speed of each movement segment of the individual animals and predicts the next 24 hours of the animals' speed by means of an additional data set with 24 periods. This results in an additional data set, with the upper and lower trend values of the already existing data and those in the future, which are supplemented with the uncertainty range of the respective predicted values. 
+For the prediction of the velocities on the basis of a time model, the package "Prophet" (Taylor & Letham, 2021) was used, which creates a time model based on time data and a feature type, i.e. a variable, and on the basis of the seasonalities and fluctuations contained therein, creates a forecast of the values to be achieved. In this model, the speed for the next 24 hours was modeled, for each of the three deer separately. Further, a general trend was calculated by means of the model, which algorithmically analyzes the fluctuations of the days and weeks and creates a trend curve.  The "speed forecasting" function used for this purpose calculates the average speed of each movement segment of the individual animals and predicts the next 24 hours of the animals' speed by means of an additional data set with 24 periods. This results in an additional data set, with the upper and lower trend values of the already existing data and those in the future, which are supplemented with the uncertainty range of the respective predicted values. 
 
-```{r}
+```{r echo = FALSE, results = 'hide', include = FALSE}
 ### Forecasting speed 
-speed_forcasting <- function(file){
+speed_forecasting <- function(file){
   deer_mean_speed = file %>% 
   group_by(DatetimeUTC) %>% 
   summarise(speed = mean(speed, na.rm = TRUE)) %>% 
@@ -412,28 +438,15 @@ dyplot.prophet(x = m.s, fcst = future.speed,uncertainty = TRUE )
 prophet_plot_components(m = m.s, fcst = future.speed)
 }
 
+invisible(deer_01_s.f <- speed_forecasting(deer_01))
+invisible(deer_02_s.f <- speed_forecasting(deer_02))
+invisible(deer_03_s.f <- speed_forecasting(deer_03))
+
 ```
 
-Time serie analysis for the three roe deer, implemented in a visualization of the observed values, versus the predicted values from the model, with the dark blue line indicating the predicted values, while the light blue area indicates the uncertainty area of the time series speed prediction. The output which was generated also shows the hourly but also weekly trends in the changes of the velocities, which allows a conclusion on a possible behavioral pattern of the animals. 
+## Roaming range estimation
 
-```{r}
-deer_01_s.f <- speed_forcasting(deer_01)
-```
-
-Time series speed prediction for roe deer 2:
-
-```{r}
-deer_02_s.f <- speed_forcasting(deer_02)
-```
-Time series speed prediction for roe deer 3:
-
-```{r}
-deer_03_s.f <- speed_forcasting(deer_03)
-```
-
-## Home range estimation
-
-From the forecast data of the time model, the upper and lower trend values of the forecasted 24h were used to predict the homerange, i.e. the possible residence areas of the animals. For this purpose, two areas were calculated: a minimum and a maximum distance which is possible for the animal on the basis of the forecast. The functions "min max" calculated first by means of the lower and upper prognosis border, the distance in meters, which the animal can reach, if it holds the prognosticated averaged speed over the next 24h. From the distance resulting from it by means of the function "Homerange" a minimum and a maximum distance buffer were computed and assigned to the coordinates of the all last measurement. Additionally  
+From the forecast data of the time model, the upper and lower trend values of the forecasted 24h were used to predict the roaming-range, i.e. the possible residence areas of the animals. For this purpose, two areas were calculated: a minimum and a maximum distance which is possible for the animal on the basis of the forecast. The functions "min max" calculated first by means of the lower and upper prognosis border, the distance in meters, which the animal can reach, if it holds the prognosticated averaged speed over the next 24h. From the distance resulting from it by means of the function "roamingrange" a minimum and a maximum distance buffer were computed and assigned to the coordinates of the all last measurement. 
 
 ```{r}
 min_max <- function(file){ 
@@ -454,8 +467,8 @@ deer01_HR <- min_max(deer_01_s.f)
 deer02_HR <- min_max(deer_02_s.f)
 deer03_HR <- min_max(deer_03_s.f)
 
-#Home range distance definition
-homerange <- function(file, f1){
+#Roaming range distance definition
+roamingrange <- function(file, f1){
   last_point_x = last(file$x)
   last_point_y = last(file$y)
   
@@ -468,9 +481,9 @@ homerange <- function(file, f1){
   rbind(min_buffer, max_buffer, trend_buffer)
 }
 
-homerange_deer1 <- homerange(deer_01, deer01_HR)
-homerange_deer2 <- homerange(deer_02, deer02_HR)
-homerange_deer3 <- homerange(deer_03, deer03_HR)
+roamingrange_deer1 <- roamingrange(deer_01, deer01_HR)
+roamingrange_deer2 <- roamingrange(deer_02, deer02_HR)
+roamingrange_deer3 <- roamingrange(deer_03, deer03_HR)
 
 ```
 
@@ -486,9 +499,12 @@ ggplot()+
   geom_line(data = HR123, aes(y=min_distance,x = deer_number, col = "green"))+
   geom_line(data = HR123, aes(y=max_distance,x = deer_number, col = "yellow"))+
   geom_line(data = HR123, aes(y=trend,x = deer_number, col = "orange"))+
-  ylab("Homerange distances [m]")+
+  geom_point(data = HR123, aes(y=min_distance,x = deer_number, col = "green"))+
+  geom_point(data = HR123, aes(y=max_distance,x = deer_number, col = "yellow"))+
+  geom_point(data = HR123, aes(y=trend,x = deer_number, col = "orange"))+
+  ylab("Roaming range distances [m]")+
   xlab("Deer")+
-  labs(colour='Homerange distance type')+
+  labs(colour='Roaming range distance type')+
   scale_color_manual(labels = c("Minimum distance","Trend distance", "Maximum distance"),
                      values = c("green", "blue", "red"))
 ```
@@ -539,25 +555,26 @@ deer_cleaned$row_num <- seq.int(nrow(deer_cleaned))
 
 ## Time series
 
+The following figures show the time series analysis for the three roe deer, implemented in a visualization of the observed values, versus the predicted values from the model, with the dark blue line indicating the predicted values, while the light blue area indicates the uncertainty area of the time series speed prediction. The output which was generated also shows the hourly but also weekly trends in the changes of the velocities, which allows a conclusion on a possible behavioral pattern of the animals. 
+
 When analyzing the results of the time series, several clear patterns emerge. For example, none of the three-time series is the same in several aspects, suggesting that the animals moved independently since velocity distribution varies significantly among the three animals. While deer 1 and 2 show a very constant velocity over time (Figure 2 and 3), with only two outliers where the velocity increased markedly, the velocity of deer 3 (Figure 4) is much more fluctuating and varies massively over time than that of the other animals. Only the time series of the second animal shows two jumps in the speed with the temporary increase of the speed, which is not the case with the first animal. The same pattern as in the time analysis shows up in the trend of the values, so the trend of the animal 2 is jumpy big and again small in summer and winter 2014, while the enormously increasing speed of the first animal shows up with an increasing trend for the two outliers in October of the same year.
 Further, it can be noted that the fluctuations and changes daily and weekly do not follow the same pattern for all three animals. All are mainly active at different times and not on the same days of the week. The second animal increased in the evening fast on the move, while the other two deer are alternately active throughout the day and increased at midday and morning hours. The trend of the third animal also deviates strongly from the other animals, where this was in the summer in each case strongly more slowly, i.e., less on the way than the two other animals. 
 
 ```{r, fig.cap= "Fig. 2: Time series speed predction for roe deer #1"}
-deer_01_s.f <- speed_forcasting(deer_01)
-
+deer_01_s.f <- speed_forecasting(deer_01)
 ```
+
 ```{r, fig.cap= "Fig. 3: Time series speed predction for roe deer #2"}
-deer_02_s.f <- speed_forcasting(deer_02)
+deer_02_s.f <- speed_forecasting(deer_02)
 ```
 
 ```{r, fig.cap= "Fig. 4: Time series speed predction for roe deer #3"}
-deer_02_s.f <- speed_forcasting(deer_02)
+deer_02_s.f <- speed_forecasting(deer_02)
 ```
 
+## Change points and travel distance prognosis
 
 Comparing the time series of the three deer, which show strongly varying and different patterns, the results of the changepoint analyses are exceptionally homogeneous and deviate minimally from each other. All three-time series show no significant changes in velocity and, therefore, no changepoints, i.e., moments in the time series where the velocity has changed abruptly. Thus, the BIC (Bayesian Information Criterion) for all three changepoint models is between 20 and 30 and, accordingly, very small. These values indicate that the time series, i.e., the model, has analyzed the velocity very poorly; thus, the error range is extensive. This is even more significant as the time travel from the above section has shown an opposite picture, and the plot of the velocities show massive differences over time, which should have been reflected in the changepoint analysis, but is not the case, but can be explained by the low MBIC values because the model is fragile. Thus, it would have been expected that a changepoint would have occurred at least at those points where the CPT model shows a trend change in the time series and the trend values change abruptly in the short term. 
-
-## Change points and travel distance prognosis
 
 ```{r}
 CP_value01
@@ -584,10 +601,10 @@ These significant differences in the movement area speeds are also reflected in 
 ggplot()+
   geom_path(data = deer1_3, aes(x,y, col = TierID))+
   geom_point(data = deer1_3, aes(x,y, col = TierID))+
-  geom_sf(data = homerange_deer1, col = "red", alpha = .1)+
-  geom_sf(data = homerange_deer2, col = "darkgreen", alpha = .1)+
-  geom_sf(data = homerange_deer3, col = "blue", alpha = .1)+
-  ggtitle("Predicted homerange for Roe deer 1,2 and 3 in the next 24 hours \nwith the minimum and maximum distance")+
+  geom_sf(data = roamingrange_deer1, col = "red", alpha = .1)+
+  geom_sf(data = roamingrange_deer2, col = "darkgreen", alpha = .1)+
+  geom_sf(data = roamingrange_deer3, col = "blue", alpha = .1)+
+  ggtitle("Predicted roaming range for Roe deer 1,2 and 3 in the next 24 hours \nwith the minimum and maximum distance")+
   xlab("X")+
   ylab("Y")+
   theme_minimal()+
@@ -596,7 +613,7 @@ ggplot()+
 
 ## Linear model evaluation
 
-While in the first part of the paper, the focus was on predicting the distance, i.e., the movement field of three roe dees, the results in the following part are used to make a statement about how the speed depends on other movement parameters and how this affects the movement mentioned above distances and the time model. The model that used all variables to explain the velocity has an R-squared value of 0.29 and thus performs very poorly, as only 29% of the variance of all velocity values can be explained, leaving an enormous uncertainty range. What is worth noting, however, is that all variables have a significant effect on velocity, except for the x-coordinate. Further, however, the estimate values are minimal, which seems to make sense, as the speed changes only minimally when the distance or time increases slightly and does not make exponential jumps. The p-value smaller than 0.05 additionally indicates that the model explains the velocity significantly and thus performs less poorly than the R-value. A less successful picture is shown by the models where the explanatory variable is the "area statistics (astk) and sex" here, the p-values are smaller than 0.05 and the t-values as well, but the r-value is equal to 0, and thus the variables "astk" and "sex" alone do not explain the velocity at all and are not sufficient alone for the prediction or explanation. Difficult at the model, which uses the variable "sex," however, is that it concerns a binary value, so the estimated value can rise or sink only around one and has with a value of -0.0015753 no influence alone on it, how strongly the speed changes, i.e., the sex does not define the speed. The same is true for the variable "astk," where the velocity hardly changes when the soil type changes because the estimated value is only -7.826e-05, i.e., negligible. In addition, the gender, the time, and the coordinates decrease the speed, while the angle, the areal statistics, and the distance increase the speed. 
+While in the first part of the paper, the focus was on predicting the distance, i.e., the movement field of three roe dees, the results in the following part are used to make a statement about how the speed depends on other movement parameters and how this affects the movement mentioned above distances and the time model. The model that used all variables to explain the velocity has an R-squared value of 0.29 and thus performs very poorly, as only 29% of the variance of all velocity values can be explained, leaving an enormous uncertainty range. What is worth noting, however, is that all variables have a significant effect on velocity, except for the x-coordinate. Further, however, the estimate values are minimal, which seems to make sense, as the speed changes only minimally when the distance or time increases slightly and does not make exponential jumps. The p-value smaller than 0.05 additionally indicates that the model explains the velocity significantly and thus performs less poorly than the R-value. A less successful picture is shown by the models where the explanatory variable is the "area statistics (astk)" and "sex" here, the p-values are smaller than 0.05 and the t-values as well, but the r-value is equal to 0, and thus the variables "astk" and "sex" alone do not explain the velocity at all and are not sufficient alone for the prediction or explanation. Difficult at the model, which uses the variable "sex," however, is that it concerns a binary value, so the estimated value can rise or sink only around one and has with a value of -0.0015753 no influence alone on it, how strongly the speed changes, i.e., the sex does not define the speed. The same is true for the variable "astk," where the velocity hardly changes when the soil type changes because the estimated value is only -7.826e-05, i.e., negligible. In addition, the gender, the time, and the coordinates decrease the speed, while the angle and the distance increase the speed. For the "astk" no clear trend can be made out, as the "astk" is a discrete classification and not a continous variable. 
 
 
 ```{r}
@@ -617,7 +634,7 @@ autoplot(fit_poly.astk)
 autoplot(fit_poly.sex)
 ```
 
-The following plots serve to further confirm the above statistical outputs of the results of the three models. Again, it can be seen that there is no significant correlation between areal statistics and gender in any of the three models, i.e., the changes in velocity are negligible when the ground or gender changes and would likely not change the movement zones from Figure 1. Even with a polynomial fit of the variable to the velocity, the picture does not improve, although the results of the LM evaluation actually indicated that the values should be normally distributed and thus a linear model would seem reasonable. 
+The following plots serve to further confirm the above statistical outputs of the results of the three models. Again, it can be seen that there is no significant correlation between areal statistics and sex in any of the three models, i.e., the changes in velocity are negligible when the ground or gender changes and would likely not change the movement zones from Figure 1. Even with a polynomial fit of the variable to the velocity, the picture does not improve, although the results of the LM evaluation actually indicated that the values should be normally distributed and thus a linear model would seem reasonable. 
 
 ```{r}
 effect_plot(fit, pred = astk, interval = TRUE, plot.points = TRUE)
@@ -632,21 +649,11 @@ effect_plot(fit, pred = astk, interval = TRUE, plot.points = TRUE,
             jitter = .2)
 ```
 
-## Variable relationship
-
-```{r}
-plot(p1_astk)
-plot(p2_astk)
-
-plot(p1_sex)
-plot(p2_sex)
-```
-
 ## Speed prediction usign KNN
 
-Finally, compared to the linear model, the results of the KNN model are very different from the linear model. Here the velocities were classified as mentioned to make a prediction of the velocity. In contrast to the changepoint analyses, where no differences in the values of the velocities were found, the KNN model shows that in all values 5 to 9 clusters can be formed, where the velocities of the animals could be similar enough to belong to the same animal. This is particularly interesting because the model contains 15 animals but would not make 15 clusters, i.e. single categories. Also, the RMSE is smallest with only 5 clusters, which contradicts the assumption above. 
-
-On the other hand, the predicted and observed values are less different than the statistics would suggest. For example, the predicted values are generally much smaller and the outliers are therefore less significant than with the observed data, which would allow the assumption that the high speeds are outliers and not actual changes in the speed of the animals but errors in the measurement, for example.
+Finally, compared to the linear model, the results of the KNN model are very different from the linear model. Here the velocities were classified as mentioned to make a prediction of the velocity. In contrast to the changepoint analyses, where no differences in the values of the velocities were found, the KNN model shows that in all values 5 to 9 clusters can be formed, where the velocities of the animals could be similar enough to belong to the same animal. This is particularly interesting because the model contains 15 animals but would not make 15 clusters, i.e. single categories. Also, the RMSE is smallest with only 5 clusters, which contradicts the assumption above. The R-squared value with 5 clusters goes up to 0.84 which is significantly better than on the linear model. 
+<br>
+On the other hand, the predicted and observed values are less different than the statistics would suggest. For example, the predicted values are generally much smaller and the outliers are therefore less significant than with the observed data, which would allow the assumption that the high speeds are outliers and not actual changes in the speed of the animals but errors in the measurement, for example. 
 
 ```{r}
 plot(model)
@@ -663,10 +670,23 @@ ggplot()+
 
 # Discussion
 
-
-
+This paper explored the movement of 15 roe deer and tried to predict the future movement of three deer based on their past data and the likelihood and plausibility of said movement. The first part predicted the possible future movement while the second part dug deeper into the relations between the single variables and specifically how the speed of the deer is impacted by other variables. A time series prediction model of the "Prophet" package (Taylor & Letham, 2021) showed general differences in movement behaviors between the three deer, but was able to predict the future speed of the deer with three relatively similar predictions, all including the deers individual properties of daily or weekly movement fluctuations. To compare the three time series, a change point analysis of the velocities was conducted and predicated that the time series predicted the velocities very poorly due to the low Bayesian Information Criterion (BIC) range between 20 and 30. In order to convert the predicted speeds back into a spatial context, a roaming-range estimation was conducted based on the predicted minimal and maximal speeds of the time series predictions. Although the resulting visualizations of the possible area of movement in the next 24 hours seem to be reasonable from a contextual standpoint, they lack in significance due to the strong uncertainties of the time series model. To dig deeper into the variable of speed, a linear model was trained to explore if and how other variables impacted the velocities of the deer. However the speed of the deer does not seem to be significantly dependent on the other variables with a overall R-squared value of only 0.29 and an even lower and negligible dependencies from single variables like the Arealstatistik or the sex of the deer. To again examine those results, a range of statistical test was computed which reinforced the findings. No significant correlation apart from a slight linear relationship could be found and some of the statistics suggest a general problematic nature of the data used for the models. Finally a k-nearest neighbour cluster prediction of the variable speed was conducted which resulted in a significantly better result of a R-squared value of up to 0.84 with the best amounts of clusters of 5. 
+<br>
+This project experienced problems in different domains, some to do with the data itself, some with the methods and one computational problem. This computational problem was the unsuccessful implementation of a neural network, the original goal of this paper, which would in the best case would have predicted the next n steps of the movement of a deer based on the training data. The unsuccessful implementation of different neural network algorithms could be connected to a difficulty of predictions of the coordinates as they are two separate but very connected values but ultimately to meaningless algorithm outputs of the neural networks. Problems connected to the original data of the deer were the longer time samplings, which had a strong influence on the speed variable, which was the center point of much of the work of this paper. Deer moving in different directions between the data recordings ultimately render the speed variable relatively unprecise, which ultimately probably was one of the main reasons the time series and the linear predictive models performed as poorly as the did. These problems of the speed variable carrying on into the main parts of this work is therefore also questioning the methods it chose, positioning the speed variable as central as it is. The other variables, especially in the context of the linear model also would have to be rethought to find out if they are suitable for such models, from a statistical distribution standpoint but also from a general meaningfulness standpoint. However the approach and the code that was wrote is not inherently problematic and could be a starting point for further work in this domain, either with data with a consistent high temporal resolution or a further inspection of the covariates of speed.
 
 
 <div>
 
 # Bibliography
+
+BFS (2013-2018). Arealstatistik nach Nomenklatur, https://dam-api.bfs.admin.ch/hub/api/dam/assets/20104753/master
+
+Killick R, Haynes K, Eckley IA (2022). changepoint: An R package for changepoint
+analysis. R package version 2.2.3, https://CRAN.R-project.org/package=changepoint
+
+Michelot T, Langrock R, Patterson TA (2016). moveHMM: an R package for the statistical modelling of animal movement data using hidden Markov models. Methods in Ecology and Evolution, 7(11), 1308-1315. doi:10.1111/2041-210X.12578. 
+
+Sean Taylor and Ben Letham (2021). prophet: Automatic Forecasting Procedure. R package
+version 1.0. https://CRAN.R-project.org/package=prophet
+
+Vittoz, P., Cherix, D., Gonseth, Y., Lubini, V., Maggini, R., Zbinden, N., & Zumbach, S. (2013). Climate change impacts on biodiversity in Switzerland: A review. Journal for Nature Conservation, 21(3), 154-162.
